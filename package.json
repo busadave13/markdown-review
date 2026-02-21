@@ -8,7 +8,7 @@
   "icon": "media/markdown-review-icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/busadave13/markdown-discussions"
+    "url": "https://github.com/busadave13/markdown-review"
   },
   "keywords": ["markdown", "review", "comments", "feedback", "pull request"],
   "engines": {

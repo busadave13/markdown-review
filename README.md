@@ -50,7 +50,7 @@ Comments anchor to markdown sections using a hybrid of heading slug, content has
 
 Install from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/) or:
 
-1. Download the `.vsix` file from [Releases](https://github.com/busadave13/markdown-discussions/releases)
+1. Download the `.vsix` file from [Releases](https://github.com/busadave13/markdown-review/releases)
 2. In VS Code: **Extensions → ··· → Install from VSIX…**
 
 ## Development
