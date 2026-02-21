@@ -65,4 +65,4 @@ Press **F5** to launch the Extension Development Host.
 
 ## License
 
-MIT
+LGPL-2.1 — see [LICENSE](LICENSE) for details.
