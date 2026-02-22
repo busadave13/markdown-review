@@ -97,18 +97,14 @@ export class MarkdownFilesProvider implements vscode.TreeDataProvider<TreeItem> 
       return [];
     }
 
-    // Build exclude pattern from .gitignore and .vscodeignore
-    const excludePattern = await this.buildExcludePattern();
+    // Get ignored directory patterns from .gitignore and .vscodeignore
+    const ignoredPatterns = await this.getIgnoredPatterns();
 
-    // Root level: find all markdown files, excluding ignored patterns
-    let mdFiles = await vscode.workspace.findFiles('**/*.md', excludePattern);
+    // Root level: find all markdown files
+    let mdFiles = await vscode.workspace.findFiles('**/*.md');
 
-    // Additional filter for patterns that brace expansion might miss
-    const ignoredDirs = ['/node_modules/', '/.git/', '/.vscode-test/', '/out/'];
-    mdFiles = mdFiles.filter(uri => {
-      const fsPath = uri.fsPath;
-      return !ignoredDirs.some(dir => fsPath.includes(dir));
-    });
+    // Filter out files matching ignored patterns
+    mdFiles = mdFiles.filter(uri => !this.isIgnored(uri.fsPath, ignoredPatterns));
 
     if (mdFiles.length === 0) {
       return [];
@@ -120,42 +116,64 @@ export class MarkdownFilesProvider implements vscode.TreeDataProvider<TreeItem> 
   }
 
   /**
-   * Reads .gitignore and .vscodeignore files and builds a combined exclude pattern.
+   * Checks if a file path matches any ignored pattern.
    */
-  private async buildExcludePattern(): Promise<string> {
-    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (!workspaceRoot) {
-      return '**/node_modules/**';
+  private isIgnored(filePath: string, patterns: string[]): boolean {
+    // Normalize path separators
+    const normalizedPath = filePath.replace(/\\/g, '/');
+
+    for (const pattern of patterns) {
+      // Convert glob pattern to a simple check
+      // Handle patterns like **/node_modules/**, **/.vscode-test/**, etc.
+      const dirMatch = pattern.match(/^\*\*\/(.+)\/\*\*$/);
+      if (dirMatch) {
+        const dirName = dirMatch[1];
+        if (normalizedPath.includes(`/${dirName}/`)) {
+          return true;
+        }
+      }
+
+      // Handle patterns like **/*.vsix, **/*.map
+      const extMatch = pattern.match(/^\*\*\/\*(\.[a-zA-Z0-9]+)$/);
+      if (extMatch) {
+        const ext = extMatch[1];
+        if (normalizedPath.endsWith(ext)) {
+          return true;
+        }
+      }
+
+      // Handle simple directory patterns like **/out/**
+      if (pattern.includes('/') && !pattern.includes('*')) {
+        const cleanPattern = pattern.replace(/^\*\*\//, '').replace(/\/\*\*$/, '');
+        if (normalizedPath.includes(`/${cleanPattern}/`)) {
+          return true;
+        }
+      }
     }
 
-    // Hardcode common excludes that are always filtered
-    const patterns: string[] = [
-      '**/node_modules/**',
-      '**/.git/**',
-      '**/.vscode-test/**',
-      '**/out/**',
-    ];
+    return false;
+  }
+
+  /**
+   * Gets ignored patterns from .gitignore and .vscodeignore files.
+   */
+  private async getIgnoredPatterns(): Promise<string[]> {
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceRoot) {
+      return [];
+    }
+
+    const patterns: string[] = [];
 
     // Read .gitignore
     const gitignorePath = path.join(workspaceRoot, '.gitignore');
-    const gitignorePatterns = this.parseIgnoreFile(gitignorePath);
-    patterns.push(...gitignorePatterns);
+    patterns.push(...this.parseIgnoreFile(gitignorePath));
 
     // Read .vscodeignore
     const vscodeignorePath = path.join(workspaceRoot, '.vscodeignore');
-    const vscodeignorePatterns = this.parseIgnoreFile(vscodeignorePath);
-    patterns.push(...vscodeignorePatterns);
+    patterns.push(...this.parseIgnoreFile(vscodeignorePath));
 
-    // VS Code findFiles expects a single glob pattern or RelativePattern
-    // We use a brace expansion pattern: {pattern1,pattern2,...}
-    // Filter out empty patterns and duplicates
-    const uniquePatterns = [...new Set(patterns.filter(p => p.length > 0))];
-
-    if (uniquePatterns.length === 1) {
-      return uniquePatterns[0];
-    }
-
-    return `{${uniquePatterns.join(',')}}`;
+    return patterns;
   }
 
   /**
