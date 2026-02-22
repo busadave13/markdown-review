@@ -175,8 +175,11 @@ export class MarkdownFilesProvider implements vscode.TreeDataProvider<TreeItem> 
         // Convert gitignore patterns to glob patterns
         let pattern = line;
 
+        // Track if this was explicitly a directory pattern (ends with /)
+        const isDirectory = pattern.endsWith('/');
+
         // Remove trailing slashes (directories)
-        if (pattern.endsWith('/')) {
+        if (isDirectory) {
           pattern = pattern.slice(0, -1);
         }
 
@@ -191,7 +194,9 @@ export class MarkdownFilesProvider implements vscode.TreeDataProvider<TreeItem> 
         }
 
         // Add /** suffix for directory patterns to match contents
-        if (!pattern.includes('*') && !pattern.includes('.')) {
+        // Directory patterns: ended with /, or no file extension and no glob wildcards
+        const hasExtension = /\.[a-zA-Z0-9]+$/.test(pattern);
+        if (isDirectory || (!pattern.endsWith('/**') && !hasExtension && !pattern.includes('*'))) {
           pattern = `${pattern}/**`;
         }
 
