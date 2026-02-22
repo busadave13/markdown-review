@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.2 — Activity Bar Sidebar & Bug Fixes
+
+- **Activity Bar sidebar** — New Markdown Review icon in the Activity Bar opens a sidebar showing all markdown files in the workspace
+- **Folder picker** — Filter the sidebar file list by selecting a specific folder from a dropdown
+- **Comment count badges** — Sidebar shows comment count for each markdown file
+- **Click to preview** — Click any file in the sidebar to open the preview panel
+- **Bug fix: Publish button not appearing** — Fixed issue where the Publish button wouldn't appear after adding replies or resolving threads on already-published comments
+
 ## 0.1.1 — Mermaid Diagram Support
 
 - **Mermaid rendering** — Mermaid code blocks now render as diagrams in the preview panel

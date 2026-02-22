@@ -49,6 +49,7 @@ flowchart TD
 | `sidecarManager.ts` | Read/write `.comments.json` files, change event bus with `WriteOrigin` tagging |
 | `anchorEngine.ts` | Markdown parsing, section detection, hash computation, stale detection |
 | `previewPanel.ts` | WebView panel rendering markdown + inline comment sidebar (sole comment UI) |
+| `markdownFilesProvider.ts` | Activity Bar sidebar TreeDataProvider, folder picker, comment count badges |
 | `decorationProvider.ts` | Gutter icons for comment indicators |
 | `gitService.ts` | Branch creation, commits, push operations |
 | `githubProvider.ts` | GitHub PR creation via Octokit |
@@ -92,6 +93,26 @@ The preview sidebar includes a **statistics bar chart** at the bottom showing:
 - **Open** threads (blue) vs **Resolved** threads (green)
 - Rendered as a stacked horizontal bar with counts and a color legend
 - Automatically updates whenever threads are added, resolved, or reopened
+
+### Activity Bar Sidebar
+
+The extension adds an **Activity Bar icon** (Markdown Review) that opens a sidebar TreeView displaying all markdown files in the workspace:
+
+- **Folder picker** — A dropdown at the top filters files to a selected folder
+- **Comment count badges** — Each file shows the number of comment threads
+- **Click to preview** — Clicking a file opens the preview panel
+- **Auto-refresh** — File watchers update the tree when `.md` or `.comments.json` files change
+
+```typescript
+// TreeDataProvider structure
+class MarkdownFilesProvider implements vscode.TreeDataProvider<TreeItem> {
+  private selectedFolder: string | undefined;
+  
+  selectFolder(): Promise<void> {
+    // QuickPick showing all folders containing .md files
+  }
+}
+```
 
 ### Explorer Context Menu
 
@@ -168,7 +189,9 @@ Comments are anchored using a **hybrid approach** for stability:
 | Command ID | Title | Trigger |
 |-----------|-------|--------|
 | `markdownReview.publishDrafts` | Publish Pending Comments as PR | Status bar, command palette |
-| `markdownReview.openPreview` | Markdown: Review and Comment | Explorer context menu (right-click `.md` file) |
+| `markdownReview.openPreview` | Markdown: Review and Comment | Explorer context menu (right-click `.md` file), sidebar click |
+| `markdownReview.refreshFiles` | Refresh markdown files list | Sidebar title bar button |
+| `markdownReview.selectFolder` | Select folder to filter | Sidebar title bar folder icon |
 
 ### Menu Layout
 
@@ -253,7 +276,7 @@ Comments are anchored using a **hybrid approach** for stability:
 - Test files: `src/test/suite/*.test.ts` (auto-discovered by glob)
 - Run: `npm run test` (compiles first via `pretest`)
 
-### Unit Tests (85 tests)
+### Unit Tests (88 tests)
 
 | Test File | Tests | Coverage |
 |-----------|-------|----------|

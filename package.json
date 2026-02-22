@@ -2,7 +2,7 @@
   "name": "markdown-review",
   "displayName": "Markdown Review",
   "description": "Inline feedback and comments on markdown files stored in Git, with automatic PR creation",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "busa-dave-13",
   "license": "MIT",
   "icon": "media/markdown-review-icon.png",
@@ -26,10 +26,28 @@
   "activationEvents": [
     "onLanguage:markdown",
     "onCommand:markdownReview.openPreview",
-    "onCommand:markdownReview.publishDrafts"
+    "onCommand:markdownReview.publishDrafts",
+    "onView:markdownReview.files"
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "markdownReview",
+          "title": "Markdown Review",
+          "icon": "media/sidebar-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "markdownReview": [
+        {
+          "id": "markdownReview.files",
+          "name": "Markdown Files"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "markdownReview.publishDrafts",
@@ -41,6 +59,18 @@
         "title": "Markdown: Review and Comment",
         "category": "Markdown Review",
         "icon": "$(open-preview)"
+      },
+      {
+        "command": "markdownReview.refreshFiles",
+        "title": "Refresh",
+        "category": "Markdown Review",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "markdownReview.selectFolder",
+        "title": "Filter by Folder",
+        "category": "Markdown Review",
+        "icon": "$(folder)"
       }
     ],
     "configuration": {
@@ -81,6 +111,18 @@
           "command": "markdownReview.openPreview",
           "when": "resourceExtname == .md",
           "group": "navigation"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "markdownReview.selectFolder",
+          "when": "view == markdownReview.files",
+          "group": "navigation@1"
+        },
+        {
+          "command": "markdownReview.refreshFiles",
+          "when": "view == markdownReview.files",
+          "group": "navigation@2"
         }
       ]
     }

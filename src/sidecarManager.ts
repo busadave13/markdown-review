@@ -126,6 +126,8 @@ export class SidecarManager {
       id: uuidv4(),
     };
     thread.thread.push(newEntry);
+    // Mark thread as draft since it has unpublished changes
+    thread.isDraft = true;
     return newEntry;
   }
 
@@ -214,6 +216,8 @@ export class SidecarManager {
       return false;
     }
     thread.status = status;
+    // Mark thread as draft since it has unpublished changes
+    thread.isDraft = true;
     return true;
   }
 
