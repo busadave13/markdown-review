@@ -514,7 +514,7 @@ ${PREVIEW_CSS}
     <div id="resize-handle" title="Drag to resize sidebar"></div>
     <div id="sidebar">
       <div class="sidebar-header">
-        <span>Comments</span>
+        <span>Threads <span id="thread-count-badge" class="thread-count-badge"></span></span>
         <button id="publish-btn" class="publish-btn" style="display:none" title="Publish draft comments as PR">Publish</button>
       </div>
       <div id="sidebar-content"></div>
@@ -718,6 +718,16 @@ body.resizing {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.thread-count-badge {
+  font-size: 11px;
+  font-weight: normal;
+  color: var(--vscode-badge-foreground);
+  background: var(--vscode-badge-background);
+  padding: 1px 7px;
+  border-radius: 8px;
+  margin-left: 6px;
 }
 
 .publish-btn {
@@ -942,16 +952,24 @@ ul, ol { padding-left: 2em; }
 
 .comment-thread-block {
   border-left: 3px solid var(--vscode-editorInfo-foreground, #3794ff);
-  border-radius: 0 6px 6px 0;
+  border-radius: 8px;
   background: var(--vscode-editor-inactiveSelectionBackground, rgba(127,127,127,.06));
   padding: 10px 14px;
   margin: 6px 0;
+  transition: box-shadow 0.2s ease;
+  cursor: pointer;
+}
+.comment-thread-block.focused {
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder, #007fd4);
 }
 .comment-thread-block.stale    { border-left-color: var(--vscode-editorWarning-foreground, #cca700); }
 .comment-thread-block.resolved { border-left-color: var(--vscode-testing-iconPassed, #73c991); opacity: .75; }
 .comment-thread-block.orphaned { border-left-color: var(--vscode-editorError-foreground, #f14c4c); background: var(--vscode-inputValidation-errorBackground, rgba(241,76,76,.08)); }
 
 .thread-status-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -969,7 +987,7 @@ ul, ol { padding-left: 2em; }
   margin-top: 4px;
 }
 
-.comment-header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+.comment-header { display: flex; flex-direction: column; gap: 1px; margin-bottom: 2px; }
 .comment-author { font-weight: 600; font-size: 12px; color: var(--vscode-textLink-foreground); }
 .comment-time   { font-size: 11px; color: var(--vscode-descriptionForeground); }
 
@@ -1106,11 +1124,13 @@ ul, ol { padding-left: 2em; }
   border: 1px solid var(--vscode-widget-border, rgba(127,127,127,.2));
   border-radius: 12px;
   padding: 2px 8px;
-  font-size: 12px;
+  font-size: 11px;
   cursor: pointer;
   color: var(--vscode-foreground);
   line-height: 1.4;
-  margin-top: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: normal;
 }
 .reaction-btn:hover {
   background: var(--vscode-button-secondaryHoverBackground, rgba(127,127,127,.3));
@@ -1123,6 +1143,29 @@ ul, ol { padding-left: 2em; }
   font-weight: 600;
   min-width: 8px;
   text-align: center;
+}
+
+/* ── collapsed thread divider ──────────────── */
+
+.collapsed-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  cursor: pointer;
+  color: var(--vscode-textLink-foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+.collapsed-divider:hover {
+  text-decoration: underline;
+}
+.collapsed-divider::before,
+.collapsed-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--vscode-widget-border, rgba(127,127,127,.25));
 }
 
 /* ── sidebar statistics chart ─────────────── */
@@ -1300,6 +1343,43 @@ const PREVIEW_JS = /* js */ `
     return { form, textarea };
   }
 
+  // ── helper: expand/collapse thread ─────────
+  function expandThread(block) {
+    block.classList.add('focused');
+    var divider = block.querySelector('.collapsed-divider');
+    if (divider) { divider.style.display = 'none'; }
+    block.querySelectorAll('.collapsed-entry').forEach(function(el) {
+      el.style.display = '';
+      el.classList.remove('collapsed-entry');
+    });
+  }
+
+  function collapseThread(block) {
+    if (!block.dataset.collapsible) { return; }
+    block.classList.remove('focused');
+    var entries = block.querySelectorAll('.comment-entry');
+    if (entries.length <= 2) { return; }
+    var divider = block.querySelector('.collapsed-divider');
+    if (divider) {
+      divider.style.display = '';
+      var moreCount = entries.length - 2;
+      divider.textContent = moreCount + ' more ' + (moreCount === 1 ? 'reply' : 'replies');
+    }
+    for (var i = 1; i < entries.length - 1; i++) {
+      entries[i].style.display = 'none';
+      entries[i].classList.add('collapsed-entry');
+    }
+  }
+
+  // ── auto-collapse on outside click ─────────
+  document.addEventListener('click', function(e) {
+    document.querySelectorAll('.comment-thread-block.focused').forEach(function(block) {
+      if (!block.contains(e.target)) {
+        collapseThread(block);
+      }
+    });
+  });
+
   // ── helper: highlight a sidebar section ────
   function highlightSection(sectionEl) {
     sectionEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1342,10 +1422,37 @@ const PREVIEW_JS = /* js */ `
 
         const statusLabel = document.createElement('div');
         statusLabel.className = 'thread-status-label ' + status;
+        const statusText = document.createElement('span');
         const labels = { open: '\u25CF Open', resolved: '\u2713 Resolved', stale: '\u26A0 Content Changed', orphaned: '\u26A0 Section Removed' };
-        statusLabel.textContent = (labels[status] || status) + (thread.isDraft ? '  (Draft)' : '');
+        statusText.textContent = (labels[status] || status) + (thread.isDraft ? '  (Draft)' : '');
+        statusLabel.appendChild(statusText);
+
+        // Thread-level thumbs-up reaction (uses first comment's reactions)
+        if (thread.thread.length > 0) {
+          const firstEntry = thread.thread[0];
+          const threadReactions = firstEntry.reactions || [];
+          const threadReactionBtn = document.createElement('button');
+          threadReactionBtn.className = 'reaction-btn' + (threadReactions.includes(currentUser) ? ' reacted' : '');
+          threadReactionBtn.title = threadReactions.length > 0 ? threadReactions.join(', ') : 'Add reaction';
+          const threadThumbsUp = document.createElement('span');
+          threadThumbsUp.textContent = '\uD83D\uDC4D';
+          threadReactionBtn.appendChild(threadThumbsUp);
+          if (threadReactions.length > 0) {
+            const threadCount = document.createElement('span');
+            threadCount.className = 'reaction-count';
+            threadCount.textContent = String(threadReactions.length);
+            threadReactionBtn.appendChild(threadCount);
+          }
+          threadReactionBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            vscode.postMessage({ command: 'toggleReaction', threadId: thread.id, commentId: firstEntry.id });
+          });
+          statusLabel.appendChild(threadReactionBtn);
+        }
+
         block.appendChild(statusLabel);
 
+        var entryElements = [];
         thread.thread.forEach((entry, entryIndex) => {
           const entryEl = document.createElement('div');
           entryEl.className = 'comment-entry';
@@ -1371,25 +1478,6 @@ const PREVIEW_JS = /* js */ `
           body.textContent = entry.body;
           entryEl.appendChild(body);
 
-          // Thumbs-up reaction button
-          const reactions = entry.reactions || [];
-          const reactionBtn = document.createElement('button');
-          reactionBtn.className = 'reaction-btn' + (reactions.includes(currentUser) ? ' reacted' : '');
-          reactionBtn.title = reactions.length > 0 ? reactions.join(', ') : 'Add reaction';
-          const thumbsUp = document.createElement('span');
-          thumbsUp.textContent = '\uD83D\uDC4D';
-          reactionBtn.appendChild(thumbsUp);
-          if (reactions.length > 0) {
-            const count = document.createElement('span');
-            count.className = 'reaction-count';
-            count.textContent = String(reactions.length);
-            reactionBtn.appendChild(count);
-          }
-          reactionBtn.addEventListener('click', () => {
-            vscode.postMessage({ command: 'toggleReaction', threadId: thread.id, commentId: entry.id });
-          });
-          entryEl.appendChild(reactionBtn);
-
           // Per-comment action links (only for the comment author, and only on non-resolved threads)
           if (entry.author === currentUser && status !== 'resolved') {
             const commentActions = document.createElement('div');
@@ -1398,7 +1486,8 @@ const PREVIEW_JS = /* js */ `
             const editLink = document.createElement('button');
             editLink.className = 'action-link';
             editLink.textContent = 'Edit';
-            editLink.addEventListener('click', () => {
+            editLink.addEventListener('click', (e) => {
+              e.stopPropagation();
               // Toggle: if edit form already open, close it
               const existing = entryEl.querySelector('.comment-form');
               if (existing) { existing.remove(); body.style.display = ''; return; }
@@ -1424,7 +1513,8 @@ const PREVIEW_JS = /* js */ `
             const deleteLink = document.createElement('button');
             deleteLink.className = 'action-link';
             deleteLink.textContent = 'Delete';
-            deleteLink.addEventListener('click', () => {
+            deleteLink.addEventListener('click', (e) => {
+              e.stopPropagation();
               vscode.postMessage({ command: 'deleteComment', threadId: thread.id, commentId: entry.id });
             });
             commentActions.appendChild(deleteLink);
@@ -1432,7 +1522,40 @@ const PREVIEW_JS = /* js */ `
             entryEl.appendChild(commentActions);
           }
 
-          block.appendChild(entryEl);
+          entryElements.push(entryEl);
+        });
+
+        // Collapse/expand logic: show first & last, hide middle comments
+        if (entryElements.length > 2) {
+          block.appendChild(entryElements[0]);
+
+          var divider = document.createElement('div');
+          divider.className = 'collapsed-divider';
+          var moreCount = entryElements.length - 2;
+          divider.textContent = moreCount + ' more ' + (moreCount === 1 ? 'reply' : 'replies');
+          divider.addEventListener('click', function(e) {
+            e.stopPropagation();
+            expandThread(block);
+          });
+          block.appendChild(divider);
+
+          for (var i = 1; i < entryElements.length - 1; i++) {
+            entryElements[i].classList.add('collapsed-entry');
+            entryElements[i].style.display = 'none';
+            block.appendChild(entryElements[i]);
+          }
+
+          block.appendChild(entryElements[entryElements.length - 1]);
+          block.dataset.collapsible = 'true';
+        } else {
+          entryElements.forEach(function(el) { block.appendChild(el); });
+        }
+
+        // Auto-expand on click
+        block.addEventListener('click', function() {
+          if (block.dataset.collapsible === 'true' && !block.classList.contains('focused')) {
+            expandThread(block);
+          }
         });
 
         // Thread-level actions bar
@@ -1637,8 +1760,30 @@ const PREVIEW_JS = /* js */ `
 
         const statusLabel = document.createElement('div');
         statusLabel.className = 'thread-status-label ' + status;
+        const statusText = document.createElement('span');
         const labels = { orphaned: '\u26A0 Section Removed' };
-        statusLabel.textContent = (labels[status] || status) + (thread.isDraft ? '  (Draft)' : '');
+        statusText.textContent = (labels[status] || status) + (thread.isDraft ? '  (Draft)' : '');
+        statusLabel.appendChild(statusText);
+
+        // Thread-level thumbs-up reaction for orphaned thread (read-only)
+        if (thread.thread.length > 0) {
+          const firstEntry = thread.thread[0];
+          const threadReactions = firstEntry.reactions || [];
+          if (threadReactions.length > 0) {
+            const threadReactionBtn = document.createElement('button');
+            threadReactionBtn.className = 'reaction-btn' + (threadReactions.includes(currentUser) ? ' reacted' : '');
+            threadReactionBtn.title = threadReactions.join(', ');
+            threadReactionBtn.disabled = true;
+            const threadThumbsUp = document.createElement('span');
+            threadThumbsUp.textContent = '\uD83D\uDC4D';
+            threadReactionBtn.appendChild(threadThumbsUp);
+            const threadCount = document.createElement('span');
+            threadCount.className = 'reaction-count';
+            threadCount.textContent = String(threadReactions.length);
+            threadReactionBtn.appendChild(threadCount);
+            statusLabel.appendChild(threadReactionBtn);
+          }
+        }
 
         // Show original section slug as reference
         const slugRef = document.createElement('div');
@@ -1689,6 +1834,7 @@ const PREVIEW_JS = /* js */ `
           block.appendChild(reparentBar);
         }
 
+        var orphanedEntryElements = [];
         thread.thread.forEach((entry, entryIndex) => {
           const entryEl = document.createElement('div');
           entryEl.className = 'comment-entry';
@@ -1714,24 +1860,40 @@ const PREVIEW_JS = /* js */ `
           body.textContent = entry.body;
           entryEl.appendChild(body);
 
-          // Reactions (read-only for orphaned)
-          const reactions = entry.reactions || [];
-          if (reactions.length > 0) {
-            const reactionBtn = document.createElement('button');
-            reactionBtn.className = 'reaction-btn' + (reactions.includes(currentUser) ? ' reacted' : '');
-            reactionBtn.title = reactions.join(', ');
-            reactionBtn.disabled = true;
-            const thumbsUp = document.createElement('span');
-            thumbsUp.textContent = '\uD83D\uDC4D';
-            reactionBtn.appendChild(thumbsUp);
-            const count = document.createElement('span');
-            count.className = 'reaction-count';
-            count.textContent = String(reactions.length);
-            reactionBtn.appendChild(count);
-            entryEl.appendChild(reactionBtn);
+          orphanedEntryElements.push(entryEl);
+        });
+
+        // Collapse/expand for orphaned threads
+        if (orphanedEntryElements.length > 2) {
+          block.appendChild(orphanedEntryElements[0]);
+
+          var orphanedDivider = document.createElement('div');
+          orphanedDivider.className = 'collapsed-divider';
+          var orphanedMoreCount = orphanedEntryElements.length - 2;
+          orphanedDivider.textContent = orphanedMoreCount + ' more ' + (orphanedMoreCount === 1 ? 'reply' : 'replies');
+          orphanedDivider.addEventListener('click', function(e) {
+            e.stopPropagation();
+            expandThread(block);
+          });
+          block.appendChild(orphanedDivider);
+
+          for (var oi = 1; oi < orphanedEntryElements.length - 1; oi++) {
+            orphanedEntryElements[oi].classList.add('collapsed-entry');
+            orphanedEntryElements[oi].style.display = 'none';
+            block.appendChild(orphanedEntryElements[oi]);
           }
 
-          block.appendChild(entryEl);
+          block.appendChild(orphanedEntryElements[orphanedEntryElements.length - 1]);
+          block.dataset.collapsible = 'true';
+        } else {
+          orphanedEntryElements.forEach(function(el) { block.appendChild(el); });
+        }
+
+        // Auto-expand on click
+        block.addEventListener('click', function() {
+          if (block.dataset.collapsible === 'true' && !block.classList.contains('focused')) {
+            expandThread(block);
+          }
         });
 
         // Actions bar (no reply for orphaned, but allow resolve/delete)
@@ -1776,6 +1938,19 @@ const PREVIEW_JS = /* js */ `
   })();
 
   updateEmptyState();
+
+  // ── thread count badge ─────────────────────
+  (function updateThreadCount() {
+    const badge = document.getElementById('thread-count-badge');
+    if (!badge) { return; }
+    let threadCount = 0;
+    for (const slug in commentsBySlug) {
+      const threads = commentsBySlug[slug];
+      if (threads) { threadCount += threads.length; }
+    }
+    badge.textContent = String(threadCount);
+    if (threadCount === 0) { badge.style.display = 'none'; }
+  })();
 
   // ── publish button ─────────────────────────
   (function renderPublishButton() {
