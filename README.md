@@ -1,30 +1,45 @@
 # Markdown Threads
 
-Add threaded review comments to any markdown file in your Git repository — right from VS Code. Comments are stored as sidecar JSON files alongside your docs, and can be published as pull requests to GitHub or Azure DevOps with one click.
+**Review and comment on markdown files directly in VS Code** — no more switching to Google Docs or losing context in PR comments. Threads are stored alongside your docs in Git and can be published as pull requests with one click.
 
 ![Markdown Threads screenshot](https://raw.githubusercontent.com/busadave13/markdown-threads/main/.images/screen.png)
 
-## Features
+## ✨ Features
 
-- **Preview sidebar** — Right-click any `.md` file → "Markdown: Review and Comment" to open a rendered preview with an inline comment sidebar
-- **Threaded comments** — Add, reply to, edit, and delete comments anchored to markdown sections
-- **Reactions** — Thumbs-up reactions on individual comments
-- **Resolve / Reopen** — Mark threads as resolved; resolved threads lock further edits
-- **Stale detection** — Comments are flagged when the underlying section content changes
-- **Statistics chart** — See open vs resolved thread counts at a glance
-- **Draft mode** — Comments are saved locally as drafts until you publish
-- **One-click PR creation** — Publish all draft comments as a pull request to GitHub or Azure DevOps
+### Core Commenting
+- **Inline threaded comments** — Add comments anchored to specific sections of your markdown docs
+- **Reply, edit, delete** — Full conversation threading with author controls
+- **👍 Reactions** — React to comments with thumbs-up
+- **Resolve & reopen** — Mark discussions complete; resolved threads are locked from edits
 
-## How It Works
+### Smart Anchoring
+- **Survives edits** — Comments stay attached even when you reorganize your document
+- **Stale detection** — Get a visual warning when the underlying content has changed
+- **Orphan handling** — When you delete a section, comments appear in a dedicated "Orphaned" area with options to reparent them to another section
 
-1. Right-click any `.md` file in the Explorer → **"Markdown: Review and Comment"**
-2. The preview panel opens beside your editor with a comment sidebar
-3. Click **Add Comment** on any section heading to start a thread
-4. When ready, click the **Publish** button in the sidebar header, or run **"Publish Pending Comments as PR"** from the command palette
+### Workflow
+- **Draft mode** — Comments save locally until you're ready to share
+- **One-click PR creation** — Publish all drafts as a pull request to GitHub or Azure DevOps
+- **Activity Bar sidebar** — Browse all markdown files in your workspace with comment counts
+- **Statistics chart** — See open, resolved, and orphaned thread counts at a glance
 
-The publish button appears automatically in the comment sidebar when you have draft comments, showing the count (e.g. "Publish 3 drafts"). It is hidden when there are no drafts to publish.
+### Preview Experience
+- **Side-by-side preview** — Rendered markdown with comment sidebar
+- **Mermaid diagrams** — Code blocks render as diagrams with theme support
+- **Thread counts** — Badges on headings show how many threads are attached
 
-Comments are stored in a `.comments.json` sidecar file next to each document:
+## 🚀 Quick Start
+
+1. **Right-click** any `.md` file in the Explorer → **"Markdown: Review and Comment"**
+2. The preview opens with a comment sidebar on the right
+3. Click **💬** on any heading to start a thread
+4. When ready, click **Publish** in the sidebar header to create a PR
+
+> **Tip:** The Publish button shows automatically when you have drafts (e.g., "Publish 3 drafts")
+
+## 📁 How Comments Are Stored
+
+Comments live in a `.comments.json` sidecar file next to each document — fully version-controlled:
 
 ```
 docs/
@@ -32,41 +47,57 @@ docs/
   feature-x.comments.json    ← created automatically
 ```
 
-## Configuration
+This "docs as code" approach means:
+- Comments travel with your docs through branches and merges
+- Full Git history of all feedback
+- No external service dependencies
+
+## ⚙️ Configuration
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `markdownThreads.autoOpenPR` | `true` | Open browser to PR after creation |
+| `markdownThreads.autoOpenPR` | `true` | Open browser after PR creation |
 | `markdownThreads.branchPrefix` | `"doc-comment"` | Prefix for comment branches |
 | `markdownThreads.defaultProvider` | `"auto"` | Git provider (`auto`, `github`, `azuredevops`) |
 
-## Anchoring
+## 🔗 Anchoring & Reparenting
 
-Comments anchor to markdown sections using a hybrid of heading slug, content hash, and line hint. When the content under a heading changes, the comment is flagged as **stale** rather than lost.
+Comments anchor to sections using a smart hybrid approach:
+- **Heading slug** — Primary identifier from the heading text
+- **Content hash** — Detects when section content changes
+- **Line hint** — Helps recover when headings are renamed
 
-## Requirements
+**When a heading is renamed**, the extension detects the change and offers a **"Reparent to..."** button to reattach orphaned comments to the correct section.
 
-- VS Code 1.85.0+
+## 📋 Requirements
+
+- VS Code 1.85.0 or later
 - Git repository with a GitHub or Azure DevOps remote
-- Sign in to your GitHub or Microsoft account in VS Code for PR creation
+- Sign in to GitHub or Microsoft account in VS Code (for PR creation)
 
-## Installation
+## 📦 Installation
 
-Install from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/) or:
+**From Marketplace:**
+Install from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=busa-dave-13.markdown-threads)
 
-1. Download the `.vsix` file from [Releases](https://github.com/busadave13/markdown-threads/releases)
+**From VSIX:**
+1. Download the `.vsix` from [Releases](https://github.com/busadave13/markdown-threads/releases)
 2. In VS Code: **Extensions → ··· → Install from VSIX…**
 
-## Development
+## 🛠️ Development
 
 ```bash
 npm install
 npm run compile
-npm run test       # Mocha + @vscode/test-electron
+npm run test       # 94 tests via Mocha + @vscode/test-electron
 ```
 
 Press **F5** to launch the Extension Development Host.
 
-## License
+## 📄 License
 
 MIT — see [LICENSE](LICENSE) for details.
+
+---
+
+**Found a bug or have a feature request?** [Open an issue](https://github.com/busadave13/markdown-threads/issues)
