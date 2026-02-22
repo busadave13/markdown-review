@@ -116,3 +116,43 @@ Avoid mocking VS Code APIs — keep unit tests on pure logic in `utils/`, `model
 - **Reactions via sidecarManager**: Use `sidecarManager.toggleReaction()` — don't mutate `reactions` array directly
 - Branch naming: `{branchPrefix}/{docSlug}-{user}-{date}-{randomHex}`
 - UUIDs via `uuid` package (`v4`)
+
+## Cross-Platform Compatibility (Windows, macOS, Linux)
+
+This extension must work identically on all three platforms. Follow these rules in every change.
+
+### File Paths
+
+- **Always** use `path.join()`, `path.dirname()`, `path.basename()`, and `path.resolve()` for constructing file paths — never concatenate strings with `/` or `\\`
+- **Never** hardcode path separators; use `path.sep` only when you genuinely need the platform separator as a string
+- **Never** assume case-sensitive file systems — macOS (HFS+) and Windows (NTFS) are case-insensitive by default; Linux (ext4) is case-sensitive. `forceConsistentCasingInFileNames` is enabled in `tsconfig.json` — keep it that way
+- In WebView HTML (`previewPanel.ts`), use VS Code `webview.asWebviewUri()` for all local resource URIs — never build `file://` URIs manually
+
+### Line Endings (CRLF vs LF)
+
+- **Normalize line endings** before processing markdown content. Always strip `\r` when splitting lines:
+  ```typescript
+  const lines = content.replace(/\r\n/g, '\n').split('\n');
+  // or equivalently:
+  const lines = content.split(/\r?\n/);
+  ```
+- Content hashing (in `utils/hash.ts`) must produce the **same hash** regardless of whether the input uses `\n` or `\r\n`. Normalize before hashing so that sidecar files remain valid across platforms.
+- The repository should include a `.gitattributes` file with `* text=auto` (and `*.md text eol=lf`) to enforce consistent line endings in Git.
+
+### Shell & Child Processes
+
+- When shelling out (e.g., `execSync`), do not assume a specific shell (`/bin/sh`, `cmd.exe`). Prefer library APIs (like `simple-git`) over raw shell commands
+- Assume `git` is on the `PATH` but wrap `execSync` calls in try/catch — on Windows the error message format may differ
+- Never use Unix-only commands (`grep`, `sed`, `cat`, etc.) in production code
+
+### Temp Files & OS APIs
+
+- Use `os.tmpdir()` for temporary directories — never hardcode `/tmp` or `%TEMP%`
+- Use `fs.mkdtempSync(path.join(os.tmpdir(), 'prefix-'))` for temp dirs in tests (already done correctly)
+- Clean up temp resources in `teardown()` / `suiteTeardown()` using `fs.rmSync(..., { recursive: true, force: true })`
+
+### Tests
+
+- Test path inputs should use `path.join()` rather than hardcoded Unix paths like `'/repo/doc.md'` — this makes tests more realistic on Windows
+- When asserting on file content, normalize line endings before comparison
+- All tests must pass on Windows, macOS, and Linux — the CI matrix should cover all three
