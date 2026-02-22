@@ -8,6 +8,7 @@ import { gitService } from './gitService';
 import { gitHubProvider } from './providers/githubProvider';
 import { adoProvider } from './providers/adoProvider';
 import { slugify } from './utils/hash';
+import { markdownItMermaid } from './utils/markdownItMermaid';
 import type { CommentThread as AppCommentThread } from './models/types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -19,14 +20,21 @@ export class PreviewPanel implements vscode.Disposable {
   public static readonly viewType = 'markdownReview.preview';
 
   private static instance: PreviewPanel | undefined;
+  private static extensionUri: vscode.Uri | undefined;
 
   private readonly panel: vscode.WebviewPanel;
   private document: vscode.TextDocument;
   private readonly md: MarkdownIt;
   private readonly disposables: vscode.Disposable[] = [];
   private updateTimeout: ReturnType<typeof setTimeout> | undefined;
+  private readonly mermaidUri: vscode.Uri;
 
   // ───────────────── public API ─────────────────
+
+  /** Set the extension URI (call once during activation). */
+  public static setExtensionUri(uri: vscode.Uri): void {
+    PreviewPanel.extensionUri = uri;
+  }
 
   /** Create a new preview panel or reveal an existing one. */
   public static async show(document: vscode.TextDocument): Promise<void> {
@@ -37,6 +45,24 @@ export class PreviewPanel implements vscode.Disposable {
       return;
     }
 
+    if (!PreviewPanel.extensionUri) {
+      vscode.window.showErrorMessage('PreviewPanel.extensionUri not set');
+      return;
+    }
+
+    const mermaidPath = vscode.Uri.joinPath(
+      PreviewPanel.extensionUri,
+      'node_modules',
+      'mermaid',
+      'dist',
+      'mermaid.min.js'
+    );
+
+    const localResourceRoots = [
+      ...(vscode.workspace.workspaceFolders?.map(f => f.uri) ?? []),
+      vscode.Uri.joinPath(PreviewPanel.extensionUri, 'node_modules'),
+    ];
+
     const panel = vscode.window.createWebviewPanel(
       PreviewPanel.viewType,
       `Preview: ${path.basename(document.uri.fsPath)}`,
@@ -44,20 +70,22 @@ export class PreviewPanel implements vscode.Disposable {
       {
         enableScripts: true,
         retainContextWhenHidden: true,
-        localResourceRoots: vscode.workspace.workspaceFolders?.map(f => f.uri) ?? [],
+        localResourceRoots,
       },
     );
 
-    PreviewPanel.instance = new PreviewPanel(panel, document);
+    PreviewPanel.instance = new PreviewPanel(panel, document, mermaidPath);
     await PreviewPanel.instance.update();
   }
 
   // ───────────────── constructor ─────────────────
 
-  private constructor(panel: vscode.WebviewPanel, document: vscode.TextDocument) {
+  private constructor(panel: vscode.WebviewPanel, document: vscode.TextDocument, mermaidPath: vscode.Uri) {
     this.panel = panel;
     this.document = document;
+    this.mermaidUri = panel.webview.asWebviewUri(mermaidPath);
     this.md = new MarkdownIt({ html: true, linkify: true, typographer: true });
+    this.md.use(markdownItMermaid);
     this.installHeadingPlugin();
 
     // Dispose cleanup
@@ -429,7 +457,8 @@ export class PreviewPanel implements vscode.Disposable {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; img-src ${cspSource} https: data:; font-src ${cspSource};">
+        content="default-src 'none'; style-src 'unsafe-inline'; script-src ${cspSource} 'nonce-${nonce}' 'unsafe-eval'; img-src ${cspSource} https: data:; font-src ${cspSource};">
+  <script src="${this.mermaidUri}"></script>
   <style>
 ${PREVIEW_CSS}
   </style>
@@ -1053,6 +1082,20 @@ ul, ol { padding-left: 2em; }
 .stats-count {
   font-weight: 600;
 }
+
+/* ── mermaid diagrams ─────────────────────────── */
+
+pre.mermaid {
+  background: transparent;
+  border: none;
+  text-align: center;
+  padding: 16px 0;
+}
+
+pre.mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
 `;
 
 // ───────────────── JS (runs inside the WebView) ─────────────────
@@ -1061,6 +1104,21 @@ const PREVIEW_JS = /* js */ `
 (function () {
   const vscode = acquireVsCodeApi();
   const sidebarContent = document.getElementById('sidebar-content');
+
+  // ── mermaid initialization ─────────────────
+  (function initMermaid() {
+    if (typeof mermaid !== 'undefined') {
+      // Detect VS Code theme (light/dark) from body class or CSS variable
+      const isDark = document.body.classList.contains('vscode-dark') ||
+                     document.body.classList.contains('vscode-high-contrast') ||
+                     getComputedStyle(document.body).getPropertyValue('--vscode-editor-background').trim().match(/^#[0-4]/);
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: isDark ? 'dark' : 'default',
+        securityLevel: 'loose',
+      });
+    }
+  })();
 
   // ── sidebar resize logic ───────────────────
   (function initResize() {

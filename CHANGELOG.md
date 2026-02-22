@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1 — Mermaid Diagram Support
+
+- **Mermaid rendering** — Mermaid code blocks now render as diagrams in the preview panel
+- **Theme-aware diagrams** — Mermaid diagrams automatically adapt to VS Code light/dark theme
+
 ## 0.1.0 — Initial Release
 
 - **Preview-only commenting** — WebView sidebar for adding threaded comments to any markdown file

@@ -2,7 +2,7 @@
   "name": "markdown-review",
   "displayName": "Markdown Review",
   "description": "Inline feedback and comments on markdown files stored in Git, with automatic PR creation",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "busa-dave-13",
   "license": "MIT",
   "icon": "media/markdown-review-icon.png",
@@ -10,7 +10,13 @@
     "type": "git",
     "url": "https://github.com/busadave13/markdown-review"
   },
-  "keywords": ["markdown", "review", "comments", "feedback", "pull request"],
+  "keywords": [
+    "markdown",
+    "review",
+    "comments",
+    "feedback",
+    "pull request"
+  ],
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -108,6 +114,7 @@
     "@octokit/rest": "^20.0.2",
     "azure-devops-node-api": "^12.5.0",
     "markdown-it": "^14.0.0",
+    "mermaid": "^11.12.3",
     "simple-git": "^3.21.0",
     "uuid": "^9.0.1"
   }

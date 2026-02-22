@@ -12,6 +12,9 @@ export async function activate(context: vscode.ExtensionContext) {
   console.log('[MarkdownReview] Extension activating...');
   console.log('[MarkdownReview] Workspace folders:', vscode.workspace.workspaceFolders?.map(f => f.uri.fsPath));
 
+  // Set extension URI for PreviewPanel to locate bundled resources (e.g., mermaid.js)
+  PreviewPanel.setExtensionUri(context.extensionUri);
+
   // Create status bar item
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   statusBarItem.command = 'markdownReview.publishDrafts';
