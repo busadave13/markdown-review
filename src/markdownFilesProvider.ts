@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import { sidecarManager } from './sidecarManager';
 
 /**
@@ -96,8 +97,11 @@ export class MarkdownFilesProvider implements vscode.TreeDataProvider<TreeItem> 
       return [];
     }
 
-    // Root level: find all markdown files
-    const mdFiles = await vscode.workspace.findFiles('**/*.md', '**/node_modules/**');
+    // Build exclude pattern from .gitignore and .vscodeignore
+    const excludePattern = await this.buildExcludePattern();
+
+    // Root level: find all markdown files, excluding ignored patterns
+    const mdFiles = await vscode.workspace.findFiles('**/*.md', excludePattern);
 
     if (mdFiles.length === 0) {
       return [];
@@ -106,6 +110,98 @@ export class MarkdownFilesProvider implements vscode.TreeDataProvider<TreeItem> 
     // Build tree structure grouped by folder
     const tree = await this.buildTree(mdFiles);
     return tree;
+  }
+
+  /**
+   * Reads .gitignore and .vscodeignore files and builds a combined exclude pattern.
+   */
+  private async buildExcludePattern(): Promise<string> {
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceRoot) {
+      return '**/node_modules/**';
+    }
+
+    const patterns: string[] = ['**/node_modules/**', '**/.git/**'];
+
+    // Read .gitignore
+    const gitignorePath = path.join(workspaceRoot, '.gitignore');
+    const gitignorePatterns = this.parseIgnoreFile(gitignorePath);
+    patterns.push(...gitignorePatterns);
+
+    // Read .vscodeignore
+    const vscodeignorePath = path.join(workspaceRoot, '.vscodeignore');
+    const vscodeignorePatterns = this.parseIgnoreFile(vscodeignorePath);
+    patterns.push(...vscodeignorePatterns);
+
+    // VS Code findFiles expects a single glob pattern or RelativePattern
+    // We use a brace expansion pattern: {pattern1,pattern2,...}
+    // Filter out empty patterns and duplicates
+    const uniquePatterns = [...new Set(patterns.filter(p => p.length > 0))];
+
+    if (uniquePatterns.length === 1) {
+      return uniquePatterns[0];
+    }
+
+    return `{${uniquePatterns.join(',')}}`;
+  }
+
+  /**
+   * Parses an ignore file and returns glob patterns suitable for VS Code findFiles.
+   */
+  private parseIgnoreFile(filePath: string): string[] {
+    try {
+      if (!fs.existsSync(filePath)) {
+        return [];
+      }
+
+      const content = fs.readFileSync(filePath, 'utf8');
+      const lines = content.split('\n');
+      const patterns: string[] = [];
+
+      for (let line of lines) {
+        // Trim whitespace
+        line = line.trim();
+
+        // Skip empty lines and comments
+        if (!line || line.startsWith('#')) {
+          continue;
+        }
+
+        // Skip negation patterns (not supported in simple glob exclude)
+        if (line.startsWith('!')) {
+          continue;
+        }
+
+        // Convert gitignore patterns to glob patterns
+        let pattern = line;
+
+        // Remove trailing slashes (directories)
+        if (pattern.endsWith('/')) {
+          pattern = pattern.slice(0, -1);
+        }
+
+        // If pattern doesn't start with ** or /, make it match anywhere
+        if (!pattern.startsWith('**/') && !pattern.startsWith('/')) {
+          pattern = `**/${pattern}`;
+        }
+
+        // Remove leading / (root-relative in gitignore)
+        if (pattern.startsWith('/')) {
+          pattern = pattern.slice(1);
+        }
+
+        // Add /** suffix for directory patterns to match contents
+        if (!pattern.includes('*') && !pattern.includes('.')) {
+          pattern = `${pattern}/**`;
+        }
+
+        patterns.push(pattern);
+      }
+
+      return patterns;
+    } catch {
+      return [];
+    }
   }
 
   private async buildTree(files: vscode.Uri[]): Promise<TreeItem[]> {
