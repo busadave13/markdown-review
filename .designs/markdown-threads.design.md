@@ -173,8 +173,15 @@ Comments are anchored using a **hybrid approach** for stability:
 
 **Stale Detection Logic:**
 - If `sectionSlug` matches but `contentHash` differs → Mark as "stale" (yellow indicator)
-- If `sectionSlug` not found → Comment orphaned (still displayed, marked stale)
+- If `sectionSlug` not found → Comment orphaned (displayed in dedicated "Orphaned Comments" section, red indicator)
 - If both match → Comment is current (blue indicator)
+
+**Orphaned Thread Handling:**
+- Orphaned threads (section deleted) appear in a dedicated "Orphaned Comments" section at the bottom of the sidebar
+- Users can resolve or delete orphaned threads
+- **Reparenting:** If the thread's `lineHint` or `contentHash` matches an existing section, a "🔗 Reparent to: [Section Name]" button appears
+- Manual reparenting is available via a dropdown when no auto-match is found
+- Reparenting updates the anchor and marks the thread as a draft
 
 ### Thread Status
 
@@ -183,6 +190,7 @@ Comments are anchored using a **hybrid approach** for stability:
 | `open` | Active discussion | Blue bubble |
 | `resolved` | Marked complete | Green checkmark |
 | `stale` | Content has drifted | Yellow warning |
+| `orphaned` | Section deleted | Red indicator (UI-only, stored as `stale`) |
 
 ## Commands
 
@@ -276,14 +284,14 @@ Comments are anchored using a **hybrid approach** for stability:
 - Test files: `src/test/suite/*.test.ts` (auto-discovered by glob)
 - Run: `npm run test` (compiles first via `pretest`)
 
-### Unit Tests (88 tests)
+### Unit Tests (94 tests)
 
 | Test File | Tests | Coverage |
 |-----------|-------|----------|
 | `hash.test.ts` | 6 | Slug generation, content hashing, edge cases, truncation |
 | `markdown.test.ts` | 10 | Section parsing, anchor matching, drift detection, code fences, `findSectionByLine` |
-| `sidecarManager.test.ts` | 39 | CRUD operations, round-trip I/O, `deleteCommentById`, `editComment`, `updateThreadStatus`, `WriteOrigin` propagation, schema validation |
-| `anchorEngine.test.ts` | 16 | Anchor creation, stale detection, section lookup, cache clearing |
+| `sidecarManager.test.ts` | 41 | CRUD operations, round-trip I/O, `deleteCommentById`, `editComment`, `updateThreadStatus`, `reparentThread`, `WriteOrigin` propagation, schema validation |
+| `anchorEngine.test.ts` | 23 | Anchor creation, stale detection, section lookup, cache clearing, `findReparentCandidate` |
 | `authManager.test.ts` | 14 | Provider detection (GitHub, ADO, visualstudio.com), URL parsing, edge cases |
 
 ### Manual Testing

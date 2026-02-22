@@ -156,3 +156,8 @@ This extension must work identically on all three platforms. Follow these rules 
 - Test path inputs should use `path.join()` rather than hardcoded Unix paths like `'/repo/doc.md'` — this makes tests more realistic on Windows
 - When asserting on file content, normalize line endings before comparison
 - All tests must pass on Windows, macOS, and Linux — the CI matrix should cover all three
+
+### Commits, Pushes and PRs
+- **Never** Push changes to remove branch without running all unit tests and getting explicit approval from the user.
+- **Always** create a unique message for each commit that describes the change being made. Avoid generic messages like "Update code" or "Fix bug".
+- **Always** include a detailed description in the PR that explains the purpose of the changes, and the testing that was done to validate them.

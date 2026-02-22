@@ -273,6 +273,33 @@ export class PreviewPanel implements vscode.Disposable {
         break;
       }
 
+      case 'reparentThread': {
+        const threadId = msg.threadId as string;
+        const newSlug = msg.newSlug as string;
+        if (!threadId || !newSlug) { return; }
+        await this.ensureDocumentFresh();
+        const sidecar = await sidecarManager.readSidecar(this.document.uri.fsPath);
+        if (!sidecar) { return; }
+        // Find the target section
+        const sections = anchorEngine.parseSections(this.document);
+        const targetSection = sections.find(s => s.slug === newSlug);
+        if (!targetSection) {
+          vscode.window.showWarningMessage('Target section not found.');
+          return;
+        }
+        // Create new anchor and reparent
+        const newAnchor = anchorEngine.createAnchor(targetSection);
+        const success = sidecarManager.reparentThread(sidecar, threadId, newAnchor);
+        if (!success) {
+          vscode.window.showWarningMessage('Thread not found.');
+          return;
+        }
+        await sidecarManager.writeSidecar(this.document.uri.fsPath, sidecar, 'preview');
+        console.log(`[MarkdownThreads] Reparented thread ${threadId} to section "${targetSection.heading}"`);
+        await this.update();
+        break;
+      }
+
       case 'deleteComment': {
         const threadId = msg.threadId as string;
         const commentId = msg.commentId as string;
@@ -397,15 +424,26 @@ export class PreviewPanel implements vscode.Disposable {
 
     // Build per-slug comment data
     const sidecar = await sidecarManager.readSidecar(this.document.uri.fsPath);
-    const commentsBySlug: Record<string, { thread: AppCommentThread; isStale: boolean }[]> = {};
+    const commentsBySlug: Record<string, { thread: AppCommentThread; isStale: boolean; reparentCandidate?: { slug: string; heading: string } }[]> = {};
 
     if (sidecar) {
       for (const thread of sidecar.comments) {
         const result = anchorEngine.findAnchoredSection(sections, thread.anchor);
         const slug = thread.anchor.sectionSlug;
+        
+        // Check for reparent candidate if section not found (orphaned)
+        let reparentCandidate: { slug: string; heading: string } | undefined;
+        if (!result) {
+          const candidate = anchorEngine.findReparentCandidate(sections, thread.anchor);
+          if (candidate) {
+            reparentCandidate = { slug: candidate.slug, heading: candidate.heading };
+          }
+        }
+        
         (commentsBySlug[slug] ??= []).push({
           thread,
           isStale: result ? result.isStale : true,
+          reparentCandidate,
         });
       }
     }
@@ -416,11 +454,14 @@ export class PreviewPanel implements vscode.Disposable {
       sectionLines[s.slug] = s.startLine;
     }
 
+    // All available sections for manual reparent dropdown
+    const allSections = sections.map(s => ({ slug: s.slug, heading: s.heading }));
+
     // Resolve current user for author-gated actions
     const currentUser = await gitService.getUserName();
 
     this.panel.title = `Preview: ${path.basename(this.document.uri.fsPath)}`;
-    this.panel.webview.html = this.buildHtml(html, commentsBySlug, sectionLines, currentUser);
+    this.panel.webview.html = this.buildHtml(html, commentsBySlug, sectionLines, currentUser, allSections);
   }
 
   /** Convert relative image paths to webview-safe URIs. */
@@ -440,9 +481,10 @@ export class PreviewPanel implements vscode.Disposable {
 
   private buildHtml(
     renderedMarkdown: string,
-    commentsBySlug: Record<string, { thread: AppCommentThread; isStale: boolean }[]>,
+    commentsBySlug: Record<string, { thread: AppCommentThread; isStale: boolean; reparentCandidate?: { slug: string; heading: string } }[]>,
     sectionLines: Record<string, number>,
     currentUser: string,
+    allSections: { slug: string; heading: string }[],
   ): string {
     const nonce = getNonce();
     const cspSource = this.panel.webview.cspSource;
@@ -450,6 +492,7 @@ export class PreviewPanel implements vscode.Disposable {
     const commentsJson = JSON.stringify(commentsBySlug).replace(/</g, '\\u003c');
     const linesJson = JSON.stringify(sectionLines);
     const userJson = JSON.stringify(currentUser).replace(/</g, '\\u003c');
+    const sectionsJson = JSON.stringify(allSections).replace(/</g, '\\u003c');
 
     return /* html */ `<!DOCTYPE html>
 <html lang="en">
@@ -471,7 +514,7 @@ ${PREVIEW_CSS}
     <div id="resize-handle" title="Drag to resize sidebar"></div>
     <div id="sidebar">
       <div class="sidebar-header">
-        <span>Comments</span>
+        <span>Threads <span id="thread-count-badge" class="thread-count-badge"></span></span>
         <button id="publish-btn" class="publish-btn" style="display:none" title="Publish draft comments as PR">Publish</button>
       </div>
       <div id="sidebar-content"></div>
@@ -482,6 +525,7 @@ ${PREVIEW_CSS}
     const commentsBySlug = ${commentsJson};
     const sectionLines = ${linesJson};
     const currentUser = ${userJson};
+    const allSections = ${sectionsJson};
 ${PREVIEW_JS}
   </script>
 </body>
@@ -676,6 +720,16 @@ body.resizing {
   justify-content: space-between;
 }
 
+.thread-count-badge {
+  font-size: 11px;
+  font-weight: normal;
+  color: var(--vscode-badge-foreground);
+  background: var(--vscode-badge-background);
+  padding: 1px 7px;
+  border-radius: 8px;
+  margin-left: 6px;
+}
+
 .publish-btn {
   font-size: 11px;
   font-weight: 600;
@@ -740,6 +794,57 @@ body.resizing {
   text-align: center;
   color: var(--vscode-descriptionForeground);
   font-size: 13px;
+}
+
+/* ── orphaned section ─────────────────────────── */
+.sidebar-section.orphaned-section {
+  background: var(--vscode-inputValidation-errorBackground, rgba(241,76,76,.04));
+  border-left: 3px solid var(--vscode-editorError-foreground, #f14c4c);
+}
+.orphaned-section-title {
+  color: var(--vscode-editorError-foreground, #f14c4c);
+}
+.orphaned-section-title::before {
+  content: '⚠ ';
+}
+
+/* ── reparent UI ─────────────────────────────── */
+.reparent-bar {
+  margin: 8px 0;
+  padding: 8px;
+  background: var(--vscode-editor-inactiveSelectionBackground, rgba(127,127,127,.08));
+  border-radius: 4px;
+}
+.reparent-btn {
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, #fff);
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.reparent-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #45494e);
+}
+.reparent-btn strong {
+  color: var(--vscode-textLink-foreground);
+}
+.reparent-select {
+  background: var(--vscode-dropdown-background, #3c3c3c);
+  color: var(--vscode-dropdown-foreground, #ccc);
+  border: 1px solid var(--vscode-dropdown-border, #3c3c3c);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  min-width: 150px;
+}
+.reparent-select:focus {
+  outline: 1px solid var(--vscode-focusBorder);
 }
 
 /* ── typography ─────────────────────────────── */
@@ -847,15 +952,24 @@ ul, ol { padding-left: 2em; }
 
 .comment-thread-block {
   border-left: 3px solid var(--vscode-editorInfo-foreground, #3794ff);
-  border-radius: 0 6px 6px 0;
+  border-radius: 8px;
   background: var(--vscode-editor-inactiveSelectionBackground, rgba(127,127,127,.06));
   padding: 10px 14px;
   margin: 6px 0;
+  transition: box-shadow 0.2s ease;
+  cursor: pointer;
+}
+.comment-thread-block.focused {
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder, #007fd4);
 }
 .comment-thread-block.stale    { border-left-color: var(--vscode-editorWarning-foreground, #cca700); }
 .comment-thread-block.resolved { border-left-color: var(--vscode-testing-iconPassed, #73c991); opacity: .75; }
+.comment-thread-block.orphaned { border-left-color: var(--vscode-editorError-foreground, #f14c4c); background: var(--vscode-inputValidation-errorBackground, rgba(241,76,76,.08)); }
 
 .thread-status-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -865,6 +979,7 @@ ul, ol { padding-left: 2em; }
 .thread-status-label.open     { color: var(--vscode-editorInfo-foreground, #3794ff); }
 .thread-status-label.resolved { color: var(--vscode-testing-iconPassed, #73c991); }
 .thread-status-label.stale    { color: var(--vscode-editorWarning-foreground, #cca700); }
+.thread-status-label.orphaned { color: var(--vscode-editorError-foreground, #f14c4c); }
 
 .comment-entry { padding: 6px 0; }
 .comment-entry + .comment-entry {
@@ -872,7 +987,7 @@ ul, ol { padding-left: 2em; }
   margin-top: 4px;
 }
 
-.comment-header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+.comment-header { display: flex; flex-direction: column; gap: 1px; margin-bottom: 2px; }
 .comment-author { font-weight: 600; font-size: 12px; color: var(--vscode-textLink-foreground); }
 .comment-time   { font-size: 11px; color: var(--vscode-descriptionForeground); }
 
@@ -1009,11 +1124,13 @@ ul, ol { padding-left: 2em; }
   border: 1px solid var(--vscode-widget-border, rgba(127,127,127,.2));
   border-radius: 12px;
   padding: 2px 8px;
-  font-size: 12px;
+  font-size: 11px;
   cursor: pointer;
   color: var(--vscode-foreground);
   line-height: 1.4;
-  margin-top: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: normal;
 }
 .reaction-btn:hover {
   background: var(--vscode-button-secondaryHoverBackground, rgba(127,127,127,.3));
@@ -1026,6 +1143,29 @@ ul, ol { padding-left: 2em; }
   font-weight: 600;
   min-width: 8px;
   text-align: center;
+}
+
+/* ── collapsed thread divider ──────────────── */
+
+.collapsed-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  cursor: pointer;
+  color: var(--vscode-textLink-foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+.collapsed-divider:hover {
+  text-decoration: underline;
+}
+.collapsed-divider::before,
+.collapsed-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--vscode-widget-border, rgba(127,127,127,.25));
 }
 
 /* ── sidebar statistics chart ─────────────── */
@@ -1078,6 +1218,13 @@ ul, ol { padding-left: 2em; }
 }
 .stats-dot-resolved {
   background: var(--vscode-charts-green, #89d185);
+}
+.stats-dot-orphaned {
+  background: var(--vscode-charts-red, #f14c4c);
+}
+.stats-bar-orphaned {
+  background: var(--vscode-charts-red, #f14c4c);
+  transition: width 0.3s ease;
 }
 .stats-count {
   font-weight: 600;
@@ -1196,6 +1343,43 @@ const PREVIEW_JS = /* js */ `
     return { form, textarea };
   }
 
+  // ── helper: expand/collapse thread ─────────
+  function expandThread(block) {
+    block.classList.add('focused');
+    var divider = block.querySelector('.collapsed-divider');
+    if (divider) { divider.style.display = 'none'; }
+    block.querySelectorAll('.collapsed-entry').forEach(function(el) {
+      el.style.display = '';
+      el.classList.remove('collapsed-entry');
+    });
+  }
+
+  function collapseThread(block) {
+    if (!block.dataset.collapsible) { return; }
+    block.classList.remove('focused');
+    var entries = block.querySelectorAll('.comment-entry');
+    if (entries.length <= 2) { return; }
+    var divider = block.querySelector('.collapsed-divider');
+    if (divider) {
+      divider.style.display = '';
+      var moreCount = entries.length - 2;
+      divider.textContent = moreCount + ' more ' + (moreCount === 1 ? 'reply' : 'replies');
+    }
+    for (var i = 1; i < entries.length - 1; i++) {
+      entries[i].style.display = 'none';
+      entries[i].classList.add('collapsed-entry');
+    }
+  }
+
+  // ── auto-collapse on outside click ─────────
+  document.addEventListener('click', function(e) {
+    document.querySelectorAll('.comment-thread-block.focused').forEach(function(block) {
+      if (!block.contains(e.target)) {
+        collapseThread(block);
+      }
+    });
+  });
+
   // ── helper: highlight a sidebar section ────
   function highlightSection(sectionEl) {
     sectionEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1238,10 +1422,37 @@ const PREVIEW_JS = /* js */ `
 
         const statusLabel = document.createElement('div');
         statusLabel.className = 'thread-status-label ' + status;
-        const labels = { open: '\u25CF Open', resolved: '\u2713 Resolved', stale: '\u26A0 Content Changed' };
-        statusLabel.textContent = (labels[status] || status) + (thread.isDraft ? '  (Draft)' : '');
+        const statusText = document.createElement('span');
+        const labels = { open: '\u25CF Open', resolved: '\u2713 Resolved', stale: '\u26A0 Content Changed', orphaned: '\u26A0 Section Removed' };
+        statusText.textContent = (labels[status] || status) + (thread.isDraft ? '  (Draft)' : '');
+        statusLabel.appendChild(statusText);
+
+        // Thread-level thumbs-up reaction (uses first comment's reactions)
+        if (thread.thread.length > 0) {
+          const firstEntry = thread.thread[0];
+          const threadReactions = firstEntry.reactions || [];
+          const threadReactionBtn = document.createElement('button');
+          threadReactionBtn.className = 'reaction-btn' + (threadReactions.includes(currentUser) ? ' reacted' : '');
+          threadReactionBtn.title = threadReactions.length > 0 ? threadReactions.join(', ') : 'Add reaction';
+          const threadThumbsUp = document.createElement('span');
+          threadThumbsUp.textContent = '\uD83D\uDC4D';
+          threadReactionBtn.appendChild(threadThumbsUp);
+          if (threadReactions.length > 0) {
+            const threadCount = document.createElement('span');
+            threadCount.className = 'reaction-count';
+            threadCount.textContent = String(threadReactions.length);
+            threadReactionBtn.appendChild(threadCount);
+          }
+          threadReactionBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            vscode.postMessage({ command: 'toggleReaction', threadId: thread.id, commentId: firstEntry.id });
+          });
+          statusLabel.appendChild(threadReactionBtn);
+        }
+
         block.appendChild(statusLabel);
 
+        var entryElements = [];
         thread.thread.forEach((entry, entryIndex) => {
           const entryEl = document.createElement('div');
           entryEl.className = 'comment-entry';
@@ -1267,25 +1478,6 @@ const PREVIEW_JS = /* js */ `
           body.textContent = entry.body;
           entryEl.appendChild(body);
 
-          // Thumbs-up reaction button
-          const reactions = entry.reactions || [];
-          const reactionBtn = document.createElement('button');
-          reactionBtn.className = 'reaction-btn' + (reactions.includes(currentUser) ? ' reacted' : '');
-          reactionBtn.title = reactions.length > 0 ? reactions.join(', ') : 'Add reaction';
-          const thumbsUp = document.createElement('span');
-          thumbsUp.textContent = '\uD83D\uDC4D';
-          reactionBtn.appendChild(thumbsUp);
-          if (reactions.length > 0) {
-            const count = document.createElement('span');
-            count.className = 'reaction-count';
-            count.textContent = String(reactions.length);
-            reactionBtn.appendChild(count);
-          }
-          reactionBtn.addEventListener('click', () => {
-            vscode.postMessage({ command: 'toggleReaction', threadId: thread.id, commentId: entry.id });
-          });
-          entryEl.appendChild(reactionBtn);
-
           // Per-comment action links (only for the comment author, and only on non-resolved threads)
           if (entry.author === currentUser && status !== 'resolved') {
             const commentActions = document.createElement('div');
@@ -1294,7 +1486,8 @@ const PREVIEW_JS = /* js */ `
             const editLink = document.createElement('button');
             editLink.className = 'action-link';
             editLink.textContent = 'Edit';
-            editLink.addEventListener('click', () => {
+            editLink.addEventListener('click', (e) => {
+              e.stopPropagation();
               // Toggle: if edit form already open, close it
               const existing = entryEl.querySelector('.comment-form');
               if (existing) { existing.remove(); body.style.display = ''; return; }
@@ -1320,7 +1513,8 @@ const PREVIEW_JS = /* js */ `
             const deleteLink = document.createElement('button');
             deleteLink.className = 'action-link';
             deleteLink.textContent = 'Delete';
-            deleteLink.addEventListener('click', () => {
+            deleteLink.addEventListener('click', (e) => {
+              e.stopPropagation();
               vscode.postMessage({ command: 'deleteComment', threadId: thread.id, commentId: entry.id });
             });
             commentActions.appendChild(deleteLink);
@@ -1328,7 +1522,40 @@ const PREVIEW_JS = /* js */ `
             entryEl.appendChild(commentActions);
           }
 
-          block.appendChild(entryEl);
+          entryElements.push(entryEl);
+        });
+
+        // Collapse/expand logic: show first & last, hide middle comments
+        if (entryElements.length > 2) {
+          block.appendChild(entryElements[0]);
+
+          var divider = document.createElement('div');
+          divider.className = 'collapsed-divider';
+          var moreCount = entryElements.length - 2;
+          divider.textContent = moreCount + ' more ' + (moreCount === 1 ? 'reply' : 'replies');
+          divider.addEventListener('click', function(e) {
+            e.stopPropagation();
+            expandThread(block);
+          });
+          block.appendChild(divider);
+
+          for (var i = 1; i < entryElements.length - 1; i++) {
+            entryElements[i].classList.add('collapsed-entry');
+            entryElements[i].style.display = 'none';
+            block.appendChild(entryElements[i]);
+          }
+
+          block.appendChild(entryElements[entryElements.length - 1]);
+          block.dataset.collapsible = 'true';
+        } else {
+          entryElements.forEach(function(el) { block.appendChild(el); });
+        }
+
+        // Auto-expand on click
+        block.addEventListener('click', function() {
+          if (block.dataset.collapsible === 'true' && !block.classList.contains('focused')) {
+            expandThread(block);
+          }
         });
 
         // Thread-level actions bar
@@ -1451,13 +1678,14 @@ const PREVIEW_JS = /* js */ `
     // Only add to sidebar immediately if the section has existing comments
     if (hasComments) {
       const totalComments = threads.reduce((sum, t) => sum + t.thread.thread.length, 0);
+      const threadCount = threads.length;
       const result = ensureSidebarSection(slug, headingText, heading);
 
-      // Badge on the heading showing comment count → scrolls to sidebar
+      // Badge on the heading showing thread count → scrolls to sidebar
       const badge = document.createElement('button');
       badge.className = 'comment-badge';
-      badge.textContent = totalComments + ' comment' + (totalComments !== 1 ? 's' : '');
-      badge.title = 'View comments in sidebar';
+      badge.textContent = threadCount + ' thread' + (threadCount !== 1 ? 's' : '');
+      badge.title = totalComments + ' comment' + (totalComments !== 1 ? 's' : '') + ' in ' + threadCount + ' thread' + (threadCount !== 1 ? 's' : '');
       badge.addEventListener('click', (e) => {
         e.stopPropagation();
         highlightSection(result.section);
@@ -1484,7 +1712,246 @@ const PREVIEW_JS = /* js */ `
     heading.appendChild(headingAddBtn);
   });
 
+  // ── render orphaned threads (section no longer exists) ──
+  (function renderOrphanedThreads() {
+    // Collect slugs that have a [data-slug] heading in the document
+    const existingSlugs = new Set();
+    document.querySelectorAll('[data-slug]').forEach(el => {
+      existingSlugs.add(el.getAttribute('data-slug'));
+    });
+
+    // Find slugs in commentsBySlug that don't have a corresponding heading
+    const orphanedSlugs = Object.keys(commentsBySlug).filter(slug => !existingSlugs.has(slug));
+    if (orphanedSlugs.length === 0) { return; }
+
+    // Create orphaned section container
+    const orphanedSection = document.createElement('div');
+    orphanedSection.className = 'sidebar-section orphaned-section';
+    orphanedSection.id = 'sidebar-orphaned';
+
+    const orphanedTitle = document.createElement('div');
+    orphanedTitle.className = 'sidebar-section-title orphaned-section-title';
+    orphanedTitle.textContent = 'Orphaned Comments';
+
+    // Count total orphaned comments
+    let totalOrphanedComments = 0;
+    orphanedSlugs.forEach(slug => {
+      const threads = commentsBySlug[slug];
+      if (threads) {
+        totalOrphanedComments += threads.reduce((sum, t) => sum + t.thread.thread.length, 0);
+      }
+    });
+
+    const countBadge = document.createElement('span');
+    countBadge.className = 'section-comment-count';
+    countBadge.textContent = String(totalOrphanedComments);
+    orphanedTitle.appendChild(countBadge);
+
+    orphanedSection.appendChild(orphanedTitle);
+
+    // Render each orphaned thread
+    orphanedSlugs.forEach(slug => {
+      const threads = commentsBySlug[slug];
+      if (!threads) { return; }
+
+      threads.forEach(({ thread, reparentCandidate }) => {
+        const status = 'orphaned';
+        const block = document.createElement('div');
+        block.className = 'comment-thread-block ' + status;
+
+        const statusLabel = document.createElement('div');
+        statusLabel.className = 'thread-status-label ' + status;
+        const statusText = document.createElement('span');
+        const labels = { orphaned: '\u26A0 Section Removed' };
+        statusText.textContent = (labels[status] || status) + (thread.isDraft ? '  (Draft)' : '');
+        statusLabel.appendChild(statusText);
+
+        // Thread-level thumbs-up reaction for orphaned thread (read-only)
+        if (thread.thread.length > 0) {
+          const firstEntry = thread.thread[0];
+          const threadReactions = firstEntry.reactions || [];
+          if (threadReactions.length > 0) {
+            const threadReactionBtn = document.createElement('button');
+            threadReactionBtn.className = 'reaction-btn' + (threadReactions.includes(currentUser) ? ' reacted' : '');
+            threadReactionBtn.title = threadReactions.join(', ');
+            threadReactionBtn.disabled = true;
+            const threadThumbsUp = document.createElement('span');
+            threadThumbsUp.textContent = '\uD83D\uDC4D';
+            threadReactionBtn.appendChild(threadThumbsUp);
+            const threadCount = document.createElement('span');
+            threadCount.className = 'reaction-count';
+            threadCount.textContent = String(threadReactions.length);
+            threadReactionBtn.appendChild(threadCount);
+            statusLabel.appendChild(threadReactionBtn);
+          }
+        }
+
+        // Show original section slug as reference
+        const slugRef = document.createElement('div');
+        slugRef.style.cssText = 'font-size: 10px; color: var(--vscode-descriptionForeground); margin-bottom: 4px;';
+        slugRef.textContent = 'Was: #' + slug;
+        block.appendChild(statusLabel);
+        block.appendChild(slugRef);
+
+        // Reparent UI: show auto-match button or dropdown
+        if (reparentCandidate) {
+          const reparentBar = document.createElement('div');
+          reparentBar.className = 'reparent-bar';
+          const reparentBtn = document.createElement('button');
+          reparentBtn.className = 'reparent-btn';
+          reparentBtn.innerHTML = '\uD83D\uDD17 Reparent to: <strong>' + reparentCandidate.heading + '</strong>';
+          reparentBtn.title = 'Move this thread to the section "' + reparentCandidate.heading + '"';
+          reparentBtn.addEventListener('click', () => {
+            vscode.postMessage({ command: 'reparentThread', threadId: thread.id, newSlug: reparentCandidate.slug });
+          });
+          reparentBar.appendChild(reparentBtn);
+          block.appendChild(reparentBar);
+        } else if (allSections.length > 0) {
+          // Manual reparent dropdown
+          const reparentBar = document.createElement('div');
+          reparentBar.className = 'reparent-bar';
+          const reparentLabel = document.createElement('span');
+          reparentLabel.textContent = '\uD83D\uDD17 Reparent to: ';
+          reparentLabel.style.cssText = 'font-size: 11px; color: var(--vscode-descriptionForeground);';
+          reparentBar.appendChild(reparentLabel);
+          const reparentSelect = document.createElement('select');
+          reparentSelect.className = 'reparent-select';
+          const defaultOpt = document.createElement('option');
+          defaultOpt.value = '';
+          defaultOpt.textContent = '— Select section —';
+          reparentSelect.appendChild(defaultOpt);
+          allSections.forEach(sec => {
+            const opt = document.createElement('option');
+            opt.value = sec.slug;
+            opt.textContent = sec.heading;
+            reparentSelect.appendChild(opt);
+          });
+          reparentSelect.addEventListener('change', () => {
+            if (reparentSelect.value) {
+              vscode.postMessage({ command: 'reparentThread', threadId: thread.id, newSlug: reparentSelect.value });
+            }
+          });
+          reparentBar.appendChild(reparentSelect);
+          block.appendChild(reparentBar);
+        }
+
+        var orphanedEntryElements = [];
+        thread.thread.forEach((entry, entryIndex) => {
+          const entryEl = document.createElement('div');
+          entryEl.className = 'comment-entry';
+
+          const header = document.createElement('div');
+          header.className = 'comment-header';
+
+          const authorSpan = document.createElement('span');
+          authorSpan.className = 'comment-author';
+          authorSpan.textContent = entry.author;
+          header.appendChild(authorSpan);
+
+          const time = document.createElement('span');
+          time.className = 'comment-time';
+          try { time.textContent = new Date(entry.created).toLocaleString(); }
+          catch (_) { time.textContent = entry.created; }
+          header.appendChild(time);
+
+          entryEl.appendChild(header);
+
+          const body = document.createElement('div');
+          body.className = 'comment-body';
+          body.textContent = entry.body;
+          entryEl.appendChild(body);
+
+          orphanedEntryElements.push(entryEl);
+        });
+
+        // Collapse/expand for orphaned threads
+        if (orphanedEntryElements.length > 2) {
+          block.appendChild(orphanedEntryElements[0]);
+
+          var orphanedDivider = document.createElement('div');
+          orphanedDivider.className = 'collapsed-divider';
+          var orphanedMoreCount = orphanedEntryElements.length - 2;
+          orphanedDivider.textContent = orphanedMoreCount + ' more ' + (orphanedMoreCount === 1 ? 'reply' : 'replies');
+          orphanedDivider.addEventListener('click', function(e) {
+            e.stopPropagation();
+            expandThread(block);
+          });
+          block.appendChild(orphanedDivider);
+
+          for (var oi = 1; oi < orphanedEntryElements.length - 1; oi++) {
+            orphanedEntryElements[oi].classList.add('collapsed-entry');
+            orphanedEntryElements[oi].style.display = 'none';
+            block.appendChild(orphanedEntryElements[oi]);
+          }
+
+          block.appendChild(orphanedEntryElements[orphanedEntryElements.length - 1]);
+          block.dataset.collapsible = 'true';
+        } else {
+          orphanedEntryElements.forEach(function(el) { block.appendChild(el); });
+        }
+
+        // Auto-expand on click
+        block.addEventListener('click', function() {
+          if (block.dataset.collapsible === 'true' && !block.classList.contains('focused')) {
+            expandThread(block);
+          }
+        });
+
+        // Actions bar (no reply for orphaned, but allow resolve/delete)
+        const actionsBar = document.createElement('div');
+        actionsBar.className = 'thread-actions';
+
+        if (thread.status !== 'resolved') {
+          const resolveBtn = document.createElement('button');
+          resolveBtn.className = 'action-link';
+          resolveBtn.textContent = '\u2713 Resolve';
+          resolveBtn.addEventListener('click', () => {
+            vscode.postMessage({ command: 'resolveThread', threadId: thread.id });
+          });
+          actionsBar.appendChild(resolveBtn);
+        } else {
+          const reopenBtn = document.createElement('button');
+          reopenBtn.className = 'action-link';
+          reopenBtn.textContent = '\u21BB Reopen';
+          reopenBtn.addEventListener('click', () => {
+            vscode.postMessage({ command: 'reopenThread', threadId: thread.id });
+          });
+          actionsBar.appendChild(reopenBtn);
+        }
+
+        // Delete Thread link — only for the thread creator
+        if (thread.thread.length > 0 && thread.thread[0].author === currentUser) {
+          const deleteThreadLink = document.createElement('button');
+          deleteThreadLink.className = 'action-link';
+          deleteThreadLink.textContent = '\u2715 Delete Thread';
+          deleteThreadLink.addEventListener('click', () => {
+            vscode.postMessage({ command: 'deleteThread', threadId: thread.id });
+          });
+          actionsBar.appendChild(deleteThreadLink);
+        }
+
+        block.appendChild(actionsBar);
+        orphanedSection.appendChild(block);
+      });
+    });
+
+    sidebarContent.appendChild(orphanedSection);
+  })();
+
   updateEmptyState();
+
+  // ── thread count badge ─────────────────────
+  (function updateThreadCount() {
+    const badge = document.getElementById('thread-count-badge');
+    if (!badge) { return; }
+    let threadCount = 0;
+    for (const slug in commentsBySlug) {
+      const threads = commentsBySlug[slug];
+      if (threads) { threadCount += threads.length; }
+    }
+    badge.textContent = String(threadCount);
+    if (threadCount === 0) { badge.style.display = 'none'; }
+  })();
 
   // ── publish button ─────────────────────────
   (function renderPublishButton() {
@@ -1515,30 +1982,49 @@ const PREVIEW_JS = /* js */ `
   (function renderStats() {
     const statsEl = document.getElementById('sidebar-stats');
     if (!statsEl) { return; }
+
+    // Collect existing slugs to identify orphaned threads
+    const existingSlugs = new Set();
+    document.querySelectorAll('[data-slug]').forEach(el => {
+      existingSlugs.add(el.getAttribute('data-slug'));
+    });
+
     let openCount = 0;
     let resolvedCount = 0;
+    let orphanedCount = 0;
     for (const slug in commentsBySlug) {
       const threads = commentsBySlug[slug];
       if (!threads) { continue; }
+      const isOrphanedSlug = !existingSlugs.has(slug);
       for (const t of threads) {
-        if (t.thread.status === 'resolved') { resolvedCount++; }
-        else { openCount++; }
+        if (isOrphanedSlug) {
+          orphanedCount++;
+        } else if (t.thread.status === 'resolved') {
+          resolvedCount++;
+        } else {
+          openCount++;
+        }
       }
     }
-    const total = openCount + resolvedCount;
+    const total = openCount + resolvedCount + orphanedCount;
     if (total === 0) { statsEl.style.display = 'none'; return; }
     statsEl.style.display = '';
     const openPct = Math.round((openCount / total) * 100);
-    const resolvedPct = 100 - openPct;
-    statsEl.innerHTML = '<div class="stats-title">Thread Summary</div>'
-      + '<div class="stats-bar-container">'
-      + '<div class="stats-bar-open" style="width:' + openPct + '%"></div>'
-      + '<div class="stats-bar-resolved" style="width:' + resolvedPct + '%"></div>'
-      + '</div>'
-      + '<div class="stats-legend">'
-      + '<div class="stats-legend-item"><span class="stats-dot stats-dot-open"></span> Open <span class="stats-count">' + openCount + '</span></div>'
-      + '<div class="stats-legend-item"><span class="stats-dot stats-dot-resolved"></span> Resolved <span class="stats-count">' + resolvedCount + '</span></div>'
-      + '</div>';
+    const resolvedPct = Math.round((resolvedCount / total) * 100);
+    const orphanedPct = 100 - openPct - resolvedPct;
+    let barHtml = '<div class="stats-bar-container">';
+    if (openPct > 0) { barHtml += '<div class="stats-bar-open" style="width:' + openPct + '%"></div>'; }
+    if (resolvedPct > 0) { barHtml += '<div class="stats-bar-resolved" style="width:' + resolvedPct + '%"></div>'; }
+    if (orphanedPct > 0) { barHtml += '<div class="stats-bar-orphaned" style="width:' + orphanedPct + '%"></div>'; }
+    barHtml += '</div>';
+    let legendHtml = '<div class="stats-legend">';
+    legendHtml += '<div class="stats-legend-item"><span class="stats-dot stats-dot-open"></span> Open <span class="stats-count">' + openCount + '</span></div>';
+    legendHtml += '<div class="stats-legend-item"><span class="stats-dot stats-dot-resolved"></span> Resolved <span class="stats-count">' + resolvedCount + '</span></div>';
+    if (orphanedCount > 0) {
+      legendHtml += '<div class="stats-legend-item"><span class="stats-dot stats-dot-orphaned"></span> Orphaned <span class="stats-count">' + orphanedCount + '</span></div>';
+    }
+    legendHtml += '</div>';
+    statsEl.innerHTML = '<div class="stats-title">Thread Summary</div>' + barHtml + legendHtml;
   })();
 
 })();

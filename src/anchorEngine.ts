@@ -126,6 +126,35 @@ export class AnchorEngine {
 
     return updates;
   }
+
+  /**
+   * Find a candidate section to reparent an orphaned thread to.
+   * Used when a heading is renamed but the section is still at the same location.
+   * 
+   * Priority:
+   * 1. lineHint matches a section's startLine (heading renamed, same location)
+   * 2. contentHash matches (heading renamed, body unchanged)
+   * 
+   * Returns null if no suitable candidate is found.
+   */
+  findReparentCandidate(
+    sections: MarkdownSection[],
+    anchor: CommentAnchor
+  ): MarkdownSection | null {
+    // Priority 1: lineHint matches a section's startLine
+    const byLine = sections.find(s => s.startLine === anchor.lineHint);
+    if (byLine) {
+      return byLine;
+    }
+
+    // Priority 2: contentHash matches (body is same, heading changed)
+    const byHash = sections.find(s => s.contentHash === anchor.contentHash);
+    if (byHash) {
+      return byHash;
+    }
+
+    return null;
+  }
 }
 
 export const anchorEngine = new AnchorEngine();

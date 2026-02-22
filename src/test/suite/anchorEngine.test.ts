@@ -292,4 +292,148 @@ suite('AnchorEngine Test Suite', () => {
     const engine = new AnchorEngine();
     assert.strictEqual(engine.findSectionByLine([], 0), undefined);
   });
+
+  // ── Orphaned thread identification ───────────────────────────────
+
+  test('findAnchoredSection returns null for orphaned thread (section deleted)', () => {
+    const engine = new AnchorEngine();
+    const sections = [
+      section({ heading: 'Intro', slug: 'intro', content: 'Intro content' }),
+      section({ heading: 'Setup', slug: 'setup', content: 'Setup content' }),
+    ];
+    
+    // Anchor points to a section that no longer exists
+    const orphanedAnchor: CommentAnchor = {
+      sectionSlug: 'deleted-authentication-section',
+      contentHash: 'some-old-hash',
+      lineHint: 50,
+    };
+
+    const result = engine.findAnchoredSection(sections, orphanedAnchor);
+    assert.strictEqual(result, null, 'Orphaned anchor should return null');
+  });
+
+  test('detectStaleThreads identifies orphaned threads by missing slug', () => {
+    const engine = new AnchorEngine();
+    const sections = [
+      section({ heading: 'Intro', slug: 'intro', content: 'Intro content' }),
+    ];
+
+    // Thread 1: anchored to existing section → no update
+    const validThread = thread({
+      id: 'valid',
+      status: 'open',
+      anchor: { sectionSlug: 'intro', contentHash: computeContentHash('Intro content'), lineHint: 0 },
+    });
+
+    // Thread 2: anchored to section that was deleted → becomes stale (orphaned)
+    const orphanedThread = thread({
+      id: 'orphaned',
+      status: 'open',
+      anchor: { sectionSlug: 'deleted-section', contentHash: 'any', lineHint: 99 },
+    });
+
+    const updates = engine.detectStaleThreads(sections, [validThread, orphanedThread]);
+    
+    assert.strictEqual(updates.length, 1, 'Only orphaned thread should need update');
+    assert.strictEqual(updates[0].thread.id, 'orphaned');
+    assert.strictEqual(updates[0].newStatus, 'stale', 'Orphaned thread should become stale');
+  });
+
+  test('orphaned thread with stale status remains unchanged', () => {
+    const engine = new AnchorEngine();
+    const sections = [
+      section({ heading: 'Intro', slug: 'intro', content: 'Intro content' }),
+    ];
+
+    // Already stale thread with missing section should not generate another update
+    const alreadyStaleOrphan = thread({
+      id: 'stale-orphan',
+      status: 'stale',
+      anchor: { sectionSlug: 'long-gone-section', contentHash: 'any', lineHint: 0 },
+    });
+
+    const updates = engine.detectStaleThreads(sections, [alreadyStaleOrphan]);
+    assert.strictEqual(updates.length, 0, 'Already stale orphaned thread should not update');
+  });
+
+  // ── findReparentCandidate ────────────────────────────────────────
+
+  test('findReparentCandidate returns section matching lineHint', () => {
+    const engine = new AnchorEngine();
+    const sections = [
+      section({ heading: 'Intro', slug: 'intro', startLine: 0, content: 'Intro content' }),
+      section({ heading: 'New Auth Section', slug: 'new-auth-section', startLine: 10, content: 'Auth content' }),
+      section({ heading: 'Conclusion', slug: 'conclusion', startLine: 20, content: 'Conclusion content' }),
+    ];
+
+    // Anchor with lineHint=10 should match the section at line 10
+    const anchor: CommentAnchor = {
+      sectionSlug: 'old-authentication', // old slug that no longer exists
+      contentHash: 'old-hash',
+      lineHint: 10,
+    };
+
+    const candidate = engine.findReparentCandidate(sections, anchor);
+    assert.ok(candidate, 'Should find a reparent candidate');
+    assert.strictEqual(candidate!.slug, 'new-auth-section');
+    assert.strictEqual(candidate!.heading, 'New Auth Section');
+  });
+
+  test('findReparentCandidate returns section matching contentHash when lineHint does not match', () => {
+    const engine = new AnchorEngine();
+    const content = 'This is the original content that was not changed.';
+    const sections = [
+      section({ heading: 'Intro', slug: 'intro', startLine: 0, content: 'Intro content' }),
+      section({ heading: 'Renamed Section', slug: 'renamed-section', startLine: 15, content }),
+    ];
+
+    // Anchor with matching contentHash but different lineHint
+    const anchor: CommentAnchor = {
+      sectionSlug: 'original-section',
+      contentHash: computeContentHash(content),
+      lineHint: 99, // wrong line
+    };
+
+    const candidate = engine.findReparentCandidate(sections, anchor);
+    assert.ok(candidate, 'Should find a reparent candidate by content hash');
+    assert.strictEqual(candidate!.slug, 'renamed-section');
+  });
+
+  test('findReparentCandidate returns null when no match found', () => {
+    const engine = new AnchorEngine();
+    const sections = [
+      section({ heading: 'Intro', slug: 'intro', startLine: 0, content: 'Intro content' }),
+      section({ heading: 'Setup', slug: 'setup', startLine: 5, content: 'Setup content' }),
+    ];
+
+    const anchor: CommentAnchor = {
+      sectionSlug: 'deleted-section',
+      contentHash: 'unique-hash-not-matching-anything',
+      lineHint: 999, // no section at this line
+    };
+
+    const candidate = engine.findReparentCandidate(sections, anchor);
+    assert.strictEqual(candidate, null, 'Should return null when no candidate found');
+  });
+
+  test('findReparentCandidate prioritizes lineHint over contentHash', () => {
+    const engine = new AnchorEngine();
+    const content = 'Shared content between sections.';
+    const sections = [
+      section({ heading: 'Section A', slug: 'section-a', startLine: 5, content }),
+      section({ heading: 'Section B', slug: 'section-b', startLine: 10, content }),
+    ];
+
+    // Both sections have the same content, but lineHint matches Section A
+    const anchor: CommentAnchor = {
+      sectionSlug: 'old-section',
+      contentHash: computeContentHash(content),
+      lineHint: 5,
+    };
+
+    const candidate = engine.findReparentCandidate(sections, anchor);
+    assert.ok(candidate);
+    assert.strictEqual(candidate!.slug, 'section-a', 'Should prioritize lineHint match');
+  });
 });

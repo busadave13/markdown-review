@@ -320,6 +320,39 @@ suite('SidecarManager Test Suite', () => {
     assert.ok(sc.comments.every(t => t.isDraft === false));
   });
 
+  // ── reparentThread ──────────────────────────────────────────────
+
+  test('reparentThread updates anchor and resets status', () => {
+    const mgr = makeSidecar();
+    const sc = emptySidecar();
+    const thread = mgr.addThread(sc, threadStub({
+      anchor: { sectionSlug: 'old-section', contentHash: 'old-hash', lineHint: 5 },
+      status: 'stale',
+      isDraft: false,
+    }));
+
+    const newAnchor = { sectionSlug: 'new-section', contentHash: 'new-hash', lineHint: 10 };
+    const result = mgr.reparentThread(sc, thread.id, newAnchor);
+
+    assert.strictEqual(result, true);
+    assert.strictEqual(sc.comments[0].anchor.sectionSlug, 'new-section');
+    assert.strictEqual(sc.comments[0].anchor.contentHash, 'new-hash');
+    assert.strictEqual(sc.comments[0].anchor.lineHint, 10);
+    assert.strictEqual(sc.comments[0].status, 'open', 'Status should be reset to open');
+    assert.strictEqual(sc.comments[0].isDraft, true, 'Thread should be marked as draft');
+  });
+
+  test('reparentThread returns false for unknown thread', () => {
+    const mgr = makeSidecar();
+    const sc = emptySidecar();
+    mgr.addThread(sc, threadStub());
+
+    const newAnchor = { sectionSlug: 'new-section', contentHash: 'new-hash', lineHint: 10 };
+    const result = mgr.reparentThread(sc, 'nonexistent-id', newAnchor);
+
+    assert.strictEqual(result, false);
+  });
+
   // ── File I/O round-trip ──────────────────────────────────────────
 
   test('writeSidecar and readSidecar round-trip correctly', async () => {
