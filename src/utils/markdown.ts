@@ -5,7 +5,9 @@ import { computeContentHash, slugify } from './hash';
  * Parse a markdown document and extract sections by heading
  */
 export function parseMarkdownSections(content: string): MarkdownSection[] {
-  const lines = content.split('\n');
+  // Normalize line endings (Windows \r\n → \n)
+  const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const lines = normalizedContent.split('\n');
   const sections: MarkdownSection[] = [];
   
   let currentSection: Partial<MarkdownSection> | null = null;
