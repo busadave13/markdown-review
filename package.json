@@ -2,7 +2,7 @@
   "name": "markdown-threads",
   "displayName": "Markdown Threads",
   "description": "Inline feedback and comments on markdown files stored in Git, with automatic PR creation",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "busa-dave-13",
   "license": "MIT",
   "icon": "media/markdown-threads-icon.png",

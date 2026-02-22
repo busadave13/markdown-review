@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 — Documentation Update
+
+- **Improved README** — Reorganized features into categories, added quick start guide, documented orphan handling and reparenting
+
 ## 0.2.0 — Orphaned Thread Support & Reparenting
 
 - **Bug fix: Orphaned comment threads now displayed** — When a markdown section is deleted, its comment threads now appear in a dedicated "Orphaned Comments" section at the bottom of the sidebar with a "⚠ Section Removed" indicator. Users can still resolve or delete orphaned threads. The statistics chart now includes an "Orphaned" category. (Fixes #6)
