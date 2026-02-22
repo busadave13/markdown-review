@@ -1,5 +1,5 @@
 ---
-name: publish
+name: publish-release
 description: Provide instructions for publishing and releasing a new version of the Markdown Threads extension.
 ---
 
