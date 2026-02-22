@@ -19,7 +19,7 @@ export class MarkdownFileItem extends vscode.TreeItem {
 
     // Click action opens preview
     this.command = {
-      command: 'markdownReview.openPreview',
+      command: 'markdownThreads.openPreview',
       title: 'Open Preview',
       arguments: [uri],
     };

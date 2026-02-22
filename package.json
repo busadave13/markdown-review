@@ -1,14 +1,14 @@
 {
-  "name": "markdown-review",
-  "displayName": "Markdown Review",
+  "name": "markdown-threads",
+  "displayName": "Markdown Threads",
   "description": "Inline feedback and comments on markdown files stored in Git, with automatic PR creation",
-  "version": "0.1.2",
+  "version": "0.1.0",
   "publisher": "busa-dave-13",
   "license": "MIT",
-  "icon": "media/markdown-review-icon.png",
+  "icon": "media/markdown-threads-icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/busadave13/markdown-review"
+    "url": "https://github.com/busadave13/markdown-threads"
   },
   "keywords": [
     "markdown",
@@ -25,68 +25,68 @@
   ],
   "activationEvents": [
     "onLanguage:markdown",
-    "onCommand:markdownReview.openPreview",
-    "onCommand:markdownReview.publishDrafts",
-    "onView:markdownReview.files"
+    "onCommand:markdownThreads.openPreview",
+    "onCommand:markdownThreads.publishDrafts",
+    "onView:markdownThreads.files"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "markdownReview",
-          "title": "Markdown Review",
+          "id": "markdownThreads",
+          "title": "Markdown Threads",
           "icon": "media/sidebar-icon.svg"
         }
       ]
     },
     "views": {
-      "markdownReview": [
+      "markdownThreads": [
         {
-          "id": "markdownReview.files",
+          "id": "markdownThreads.files",
           "name": "Markdown Files"
         }
       ]
     },
     "commands": [
       {
-        "command": "markdownReview.publishDrafts",
+        "command": "markdownThreads.publishDrafts",
         "title": "Publish Pending Comments as PR",
-        "category": "Markdown Review"
+        "category": "Markdown Threads"
       },
       {
-        "command": "markdownReview.openPreview",
+        "command": "markdownThreads.openPreview",
         "title": "Markdown: Review and Comment",
-        "category": "Markdown Review",
+        "category": "Markdown Threads",
         "icon": "$(open-preview)"
       },
       {
-        "command": "markdownReview.refreshFiles",
+        "command": "markdownThreads.refreshFiles",
         "title": "Refresh",
-        "category": "Markdown Review",
+        "category": "Markdown Threads",
         "icon": "$(refresh)"
       },
       {
-        "command": "markdownReview.selectFolder",
+        "command": "markdownThreads.selectFolder",
         "title": "Filter by Folder",
-        "category": "Markdown Review",
+        "category": "Markdown Threads",
         "icon": "$(folder)"
       }
     ],
     "configuration": {
-      "title": "Markdown Review",
+      "title": "Markdown Threads",
       "properties": {
-        "markdownReview.autoOpenPR": {
+        "markdownThreads.autoOpenPR": {
           "type": "boolean",
           "default": true,
           "description": "Automatically open browser to PR after creation"
         },
-        "markdownReview.branchPrefix": {
+        "markdownThreads.branchPrefix": {
           "type": "string",
           "default": "doc-comment",
           "description": "Prefix for branches created when publishing comments"
         },
-        "markdownReview.defaultProvider": {
+        "markdownThreads.defaultProvider": {
           "type": "string",
           "enum": [
             "auto",
@@ -101,27 +101,27 @@
     "menus": {
       "editor/title": [
         {
-          "command": "markdownReview.openPreview",
+          "command": "markdownThreads.openPreview",
           "when": "resourceLangId == markdown",
           "group": "navigation"
         }
       ],
       "explorer/context": [
         {
-          "command": "markdownReview.openPreview",
+          "command": "markdownThreads.openPreview",
           "when": "resourceExtname == .md",
           "group": "navigation"
         }
       ],
       "view/title": [
         {
-          "command": "markdownReview.selectFolder",
-          "when": "view == markdownReview.files",
+          "command": "markdownThreads.selectFolder",
+          "when": "view == markdownThreads.files",
           "group": "navigation@1"
         },
         {
-          "command": "markdownReview.refreshFiles",
-          "when": "view == markdownReview.files",
+          "command": "markdownThreads.refreshFiles",
+          "when": "view == markdownThreads.files",
           "group": "navigation@2"
         }
       ]

@@ -188,10 +188,10 @@ Comments are anchored using a **hybrid approach** for stability:
 
 | Command ID | Title | Trigger |
 |-----------|-------|--------|
-| `markdownReview.publishDrafts` | Publish Pending Comments as PR | Status bar, command palette |
-| `markdownReview.openPreview` | Markdown: Review and Comment | Explorer context menu (right-click `.md` file), sidebar click |
-| `markdownReview.refreshFiles` | Refresh markdown files list | Sidebar title bar button |
-| `markdownReview.selectFolder` | Select folder to filter | Sidebar title bar folder icon |
+| `markdownThreads.publishDrafts` | Publish Pending Comments as PR | Status bar, command palette |
+| `markdownThreads.openPreview` | Markdown: Review and Comment | Explorer context menu (right-click `.md` file), sidebar click |
+| `markdownThreads.refreshFiles` | Refresh markdown files list | Sidebar title bar button |
+| `markdownThreads.selectFolder` | Select folder to filter | Sidebar title bar folder icon |
 
 ### Menu Layout
 
@@ -248,10 +248,10 @@ Comments are anchored using a **hybrid approach** for stability:
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| ~~`markdownReview.docPaths`~~ | `string[]` | `["docs/", "design/"]` | **Deprecated.** Previously restricted comments to specific folders. Comments now work on any `.md` file. |
-| `markdownReview.autoOpenPR` | `boolean` | `true` | Open browser after PR creation |
-| `markdownReview.branchPrefix` | `string` | `"doc-comment"` | Prefix for comment branches |
-| `markdownReview.defaultProvider` | `string` | `"auto"` | Git provider (`auto`, `github`, `azuredevops`) |
+| ~~`markdownThreads.docPaths`~~ | `string[]` | `["docs/", "design/"]` | **Deprecated.** Previously restricted comments to specific folders. Comments now work on any `.md` file. |
+| `markdownThreads.autoOpenPR` | `boolean` | `true` | Open browser after PR creation |
+| `markdownThreads.branchPrefix` | `string` | `"doc-comment"` | Prefix for comment branches |
+| `markdownThreads.defaultProvider` | `string` | `"auto"` | Git provider (`auto`, `github`, `azuredevops`) |
 
 ## Security Considerations
 

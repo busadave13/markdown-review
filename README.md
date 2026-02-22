@@ -1,8 +1,8 @@
-# Markdown Review
+# Markdown Threads
 
 Add threaded review comments to any markdown file in your Git repository — right from VS Code. Comments are stored as sidecar JSON files alongside your docs, and can be published as pull requests to GitHub or Azure DevOps with one click.
 
-![Markdown Review screenshot](https://raw.githubusercontent.com/busadave13/markdown-review/main/.images/screen.png)
+![Markdown Threads screenshot](https://raw.githubusercontent.com/busadave13/markdown-threads/main/.images/screen.png)
 
 ## Features
 
@@ -14,8 +14,6 @@ Add threaded review comments to any markdown file in your Git repository — rig
 - **Statistics chart** — See open vs resolved thread counts at a glance
 - **Draft mode** — Comments are saved locally as drafts until you publish
 - **One-click PR creation** — Publish all draft comments as a pull request to GitHub or Azure DevOps
-
-
 
 ## How It Works
 
@@ -38,9 +36,9 @@ docs/
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `markdownReview.autoOpenPR` | `true` | Open browser to PR after creation |
-| `markdownReview.branchPrefix` | `"doc-comment"` | Prefix for comment branches |
-| `markdownReview.defaultProvider` | `"auto"` | Git provider (`auto`, `github`, `azuredevops`) |
+| `markdownThreads.autoOpenPR` | `true` | Open browser to PR after creation |
+| `markdownThreads.branchPrefix` | `"doc-comment"` | Prefix for comment branches |
+| `markdownThreads.defaultProvider` | `"auto"` | Git provider (`auto`, `github`, `azuredevops`) |
 
 ## Anchoring
 
@@ -56,7 +54,7 @@ Comments anchor to markdown sections using a hybrid of heading slug, content has
 
 Install from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/) or:
 
-1. Download the `.vsix` file from [Releases](https://github.com/busadave13/markdown-review/releases)
+1. Download the `.vsix` file from [Releases](https://github.com/busadave13/markdown-threads/releases)
 2. In VS Code: **Extensions → ··· → Install from VSIX…**
 
 ## Development

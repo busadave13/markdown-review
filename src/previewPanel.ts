@@ -17,7 +17,7 @@ import { v4 as uuidv4 } from 'uuid';
  * with inline comment threads visible — a "preview with comments" mode.
  */
 export class PreviewPanel implements vscode.Disposable {
-  public static readonly viewType = 'markdownReview.preview';
+  public static readonly viewType = 'markdownThreads.preview';
 
   private static instance: PreviewPanel | undefined;
   private static extensionUri: vscode.Uri | undefined;
@@ -505,7 +505,7 @@ ${PREVIEW_JS}
       return;
     }
 
-    const config = vscode.workspace.getConfiguration('markdownReview');
+    const config = vscode.workspace.getConfiguration('markdownThreads');
     const defaultProvider = config.get<string>('defaultProvider', 'auto');
 
     let providerInfo = await gitService.detectProvider();

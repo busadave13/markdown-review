@@ -11,15 +11,15 @@ let statusBarItem: vscode.StatusBarItem;
 let markdownFilesProvider: MarkdownFilesProvider;
 
 export async function activate(context: vscode.ExtensionContext) {
-  console.log('[MarkdownReview] Extension activating...');
-  console.log('[MarkdownReview] Workspace folders:', vscode.workspace.workspaceFolders?.map(f => f.uri.fsPath));
+  console.log('[MarkdownThreads] Extension activating...');
+  console.log('[MarkdownThreads] Workspace folders:', vscode.workspace.workspaceFolders?.map(f => f.uri.fsPath));
 
   // Set extension URI for PreviewPanel to locate bundled resources (e.g., mermaid.js)
   PreviewPanel.setExtensionUri(context.extensionUri);
 
   // Create and register the tree view for markdown files
   markdownFilesProvider = new MarkdownFilesProvider();
-  const treeView = vscode.window.createTreeView('markdownReview.files', {
+  const treeView = vscode.window.createTreeView('markdownThreads.files', {
     treeDataProvider: markdownFilesProvider,
     showCollapseAll: true,
   });
@@ -33,15 +33,15 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Create status bar item
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-  statusBarItem.command = 'markdownReview.publishDrafts';
+  statusBarItem.command = 'markdownThreads.publishDrafts';
   context.subscriptions.push(statusBarItem);
 
   // Register commands FIRST so they are available even if git init fails
   context.subscriptions.push(
-    vscode.commands.registerCommand('markdownReview.publishDrafts', handlePublishDrafts),
-    vscode.commands.registerCommand('markdownReview.refreshFiles', () => markdownFilesProvider.refresh()),
-    vscode.commands.registerCommand('markdownReview.selectFolder', () => markdownFilesProvider.selectFolder()),
-    vscode.commands.registerCommand('markdownReview.openPreview', async (uri?: vscode.Uri) => {
+    vscode.commands.registerCommand('markdownThreads.publishDrafts', handlePublishDrafts),
+    vscode.commands.registerCommand('markdownThreads.refreshFiles', () => markdownFilesProvider.refresh()),
+    vscode.commands.registerCommand('markdownThreads.selectFolder', () => markdownFilesProvider.selectFolder()),
+    vscode.commands.registerCommand('markdownThreads.openPreview', async (uri?: vscode.Uri) => {
       let document: vscode.TextDocument | undefined;
       if (uri) {
         // Invoked from explorer context menu — load document without opening an editor
@@ -87,7 +87,7 @@ export async function activate(context: vscode.ExtensionContext) {
   try {
     await gitService.initialize();
   } catch (err) {
-    console.error('[MarkdownReview] Git initialization failed:', err);
+    console.error('[MarkdownThreads] Git initialization failed:', err);
   }
 
   // Update status bar for current editor
@@ -116,7 +116,7 @@ async function handlePublishDrafts(): Promise<void> {
   }
 
   // Detect provider — respect defaultProvider config setting
-  const config = vscode.workspace.getConfiguration('markdownReview');
+  const config = vscode.workspace.getConfiguration('markdownThreads');
   const defaultProvider = config.get<string>('defaultProvider', 'auto');
 
   let providerInfo = await gitService.detectProvider();
@@ -171,7 +171,7 @@ async function handlePublishDrafts(): Promise<void> {
   // Create PR
   const baseBranch = await gitService.getDefaultBranch();
   const title = `Feedback on ${docName}`;
-  const body = `This PR contains ${draftThreads.length} comment thread(s) on ${docName}.\n\nCreated by Markdown Review extension.`;
+  const body = `This PR contains ${draftThreads.length} comment thread(s) on ${docName}.\n\nCreated by Markdown Threads extension.`;
 
   let result;
   if (providerInfo.provider === 'github') {

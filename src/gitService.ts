@@ -17,22 +17,22 @@ export class GitService {
   async initialize(): Promise<boolean> {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
     if (!workspaceFolder) {
-      console.log('[MarkdownReview] gitService.initialize: no workspace folder');
+      console.log('[MarkdownThreads] gitService.initialize: no workspace folder');
       return false;
     }
 
-    console.log('[MarkdownReview] gitService.initialize: folder =', workspaceFolder.uri.fsPath);
+    console.log('[MarkdownThreads] gitService.initialize: folder =', workspaceFolder.uri.fsPath);
     this.git = simpleGit(workspaceFolder.uri.fsPath);
     
     try {
       const isRepo = await this.git.checkIsRepo();
-      console.log('[MarkdownReview] gitService.initialize: isRepo =', isRepo);
+      console.log('[MarkdownThreads] gitService.initialize: isRepo =', isRepo);
       if (!isRepo) {
         this.git = null;
       }
       return isRepo;
     } catch (err) {
-      console.log('[MarkdownReview] gitService.initialize: error', err);
+      console.log('[MarkdownThreads] gitService.initialize: error', err);
       this.git = null;
       return false;
     }
@@ -88,7 +88,7 @@ export class GitService {
   async getUserName(): Promise<string> {
     // Lazy-init if git wasn't ready at startup
     if (!this.git) {
-      console.log('[MarkdownReview] getUserName: git not initialized, retrying...');
+      console.log('[MarkdownThreads] getUserName: git not initialized, retrying...');
       await this.initialize();
     }
 
@@ -113,7 +113,7 @@ export class GitService {
     }
 
     // Fallback: shell out to git directly (works even without a workspace folder)
-    console.log('[MarkdownReview] getUserName: falling back to execSync');
+    console.log('[MarkdownThreads] getUserName: falling back to execSync');
     try {
       const name = execSync('git config --global user.name', { encoding: 'utf8' }).trim();
       if (name) { return name; }
@@ -167,7 +167,7 @@ export class GitService {
       // If status check fails, proceed anyway
     }
 
-    const config = vscode.workspace.getConfiguration('markdownReview');
+    const config = vscode.workspace.getConfiguration('markdownThreads');
     const prefix = config.get<string>('branchPrefix', 'doc-comment');
     
     const email = await this.getUserEmail();
