@@ -124,13 +124,6 @@
           "when": "view == markdownReview.files",
           "group": "navigation@2"
         }
-      ],
-      "view/item/context": [
-        {
-          "command": "markdownReview.openPreview",
-          "when": "view == markdownReview.files",
-          "group": "inline"
-        }
       ]
     }
   },
