@@ -5,8 +5,10 @@ import { gitService } from './gitService';
 import { gitHubProvider } from './providers/githubProvider';
 import { adoProvider } from './providers/adoProvider';
 import { PreviewPanel } from './previewPanel';
+import { MarkdownFilesProvider } from './markdownFilesProvider';
 
 let statusBarItem: vscode.StatusBarItem;
+let markdownFilesProvider: MarkdownFilesProvider;
 
 export async function activate(context: vscode.ExtensionContext) {
   console.log('[MarkdownReview] Extension activating...');
@@ -14,6 +16,15 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Set extension URI for PreviewPanel to locate bundled resources (e.g., mermaid.js)
   PreviewPanel.setExtensionUri(context.extensionUri);
+
+  // Create and register the tree view for markdown files
+  markdownFilesProvider = new MarkdownFilesProvider();
+  const treeView = vscode.window.createTreeView('markdownReview.files', {
+    treeDataProvider: markdownFilesProvider,
+    showCollapseAll: true,
+  });
+  context.subscriptions.push(treeView);
+  context.subscriptions.push({ dispose: () => markdownFilesProvider.dispose() });
 
   // Create status bar item
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -23,6 +34,7 @@ export async function activate(context: vscode.ExtensionContext) {
   // Register commands FIRST so they are available even if git init fails
   context.subscriptions.push(
     vscode.commands.registerCommand('markdownReview.publishDrafts', handlePublishDrafts),
+    vscode.commands.registerCommand('markdownReview.refreshFiles', () => markdownFilesProvider.refresh()),
     vscode.commands.registerCommand('markdownReview.openPreview', async (uri?: vscode.Uri) => {
       let document: vscode.TextDocument | undefined;
       if (uri) {
