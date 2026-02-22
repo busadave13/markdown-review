@@ -114,6 +114,16 @@ export class PreviewPanel implements vscode.Disposable {
     );
   }
 
+  // ───────────────── Document refresh helper ─────────────────
+
+  /**
+   * Ensure this.document is a fresh reference.
+   * Needed when the editor tab was closed but the preview panel remains open.
+   */
+  private async ensureDocumentFresh(): Promise<void> {
+    this.document = await vscode.workspace.openTextDocument(this.document.uri);
+  }
+
   // ───────────────── WebView message handler ─────────────────
 
   private async handleWebViewMessage(msg: { command: string; [key: string]: unknown }): Promise<void> {
@@ -129,6 +139,7 @@ export class PreviewPanel implements vscode.Disposable {
       }
 
       case 'addComment': {
+        await this.ensureDocumentFresh();
         const slug = msg.slug as string;
         const body = (msg.body as string || '').trim();
         if (!body) { return; }
@@ -345,6 +356,9 @@ export class PreviewPanel implements vscode.Disposable {
   }
 
   private async update(): Promise<void> {
+    // Ensure document reference is fresh (in case editor tab was closed)
+    await this.ensureDocumentFresh();
+
     // Fresh section parse
     anchorEngine.clearCache(this.document.uri.toString());
     const sections = anchorEngine.getSections(this.document);

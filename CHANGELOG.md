@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1
+
+- **Cross-platform fix** — Fixed markdown section parsing on Windows (CRLF line endings now handled correctly)
+- **Document refresh fix** — Fixed "Section not found" error when adding comments after opening from Explorer context menu
+
 ## 0.2.0
 
 - **Publish button in sidebar** — Draft comment count and one-click publish button now appears in the preview sidebar header
